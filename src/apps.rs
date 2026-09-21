@@ -203,6 +203,68 @@ pub fn open_with(id: AppId, file: &Path) -> Result<()> {
     launch(id, &[file.to_string_lossy().into_owned()])
 }
 
+
+/// Perfil de IureDav (unidad WebDAV montada) tal como lo guarda `perfiles.json`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DavMount {
+    pub id: String,
+    pub name: String,
+    pub url: String,
+    pub user: String,
+    /// Carpeta local donde IureDav monta la unidad.
+    pub mount_point: String,
+    /// `true` si la carpeta existe y tiene contenido (la unidad está montada).
+    pub mounted: bool,
+    pub writable: bool,
+}
+
+/// Directorio de configuración de IureDav (`ProjectDirs::from("com", "Iurefficient", "IureDav")`):
+/// Linux `~/.config/iuredav`, macOS `~/Library/Application Support/com.Iurefficient.IureDav`,
+/// Windows `%APPDATA%\Iurefficient\IureDav\config`.
+pub fn iuredav_config_dir() -> Option<PathBuf> {
+    if cfg!(target_os = "linux") {
+        dirs::config_dir().map(|d| d.join("iuredav"))
+    } else if cfg!(target_os = "macos") {
+        dirs::config_dir().map(|d| d.join("com.Iurefficient.IureDav"))
+    } else {
+        dirs::config_dir().map(|d| d.join("Iurefficient").join("IureDav").join("config"))
+    }
+}
+
+/// Perfiles de IureDav configurados en este equipo (sin red). Vacío si IureDav no
+/// está instalado o no tiene perfiles.
+pub fn iuredav_mounts() -> Vec<DavMount> {
+    let Some(path) = iuredav_config_dir().map(|d| d.join("perfiles.json")) else { return vec![] };
+    let Ok(text) = std::fs::read_to_string(&path) else { return vec![] };
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else { return vec![] };
+    let items = match &v {
+        serde_json::Value::Array(a) => a.clone(),
+        serde_json::Value::Object(o) => o.get("perfiles").and_then(|p| p.as_array()).cloned().unwrap_or_default(),
+        _ => vec![],
+    };
+    items
+        .iter()
+        .filter_map(|p| {
+            let s = |k: &str| p.get(k).and_then(|x| x.as_str()).unwrap_or("").to_string();
+            let mount_point = s("punto_montaje");
+            if mount_point.is_empty() {
+                return None;
+            }
+            let mounted = std::fs::read_dir(&mount_point).map(|mut d| d.next().is_some()).unwrap_or(false);
+            Some(DavMount {
+                id: s("id"),
+                name: s("nombre"),
+                url: s("url"),
+                user: s("usuario"),
+                mount_point,
+                mounted,
+                writable: p.get("escritura").and_then(|x| x.as_bool()).unwrap_or(false),
+            })
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
