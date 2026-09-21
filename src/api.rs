@@ -154,6 +154,33 @@ fn map_upload_error(e: anyhow::Error) -> anyhow::Error {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentInfo {
+    pub id: String,
+    pub title: String,
+    pub file_name: String,
+    pub mime_type: Option<String>,
+    pub file_size: Option<u64>,
+    pub document_type: String,
+    pub transcription_status: Option<String>,
+}
+
+/// `GET /api/documents/<id>`: metadatos del documento (nombre real de archivo, tipo MIME…).
+pub async fn document(sess: &Session, doc_id: &str) -> Result<DocumentInfo> {
+    let v = sess.get_json(&format!("/api/documents/{doc_id}")).await?;
+    let d = v.get("document").ok_or_else(|| anyhow!("La instancia no devolvió el documento"))?;
+    Ok(DocumentInfo {
+        id: s(d, "id"),
+        title: s(d, "title"),
+        file_name: opt(d, "file_name").filter(|f| !f.is_empty()).unwrap_or_else(|| s(d, "title")),
+        mime_type: opt(d, "mime_type"),
+        file_size: d["file_size"].as_u64(),
+        document_type: s(d, "document_type"),
+        transcription_status: opt(d, "transcription_status"),
+    })
+}
+
 /// `GET /api/documents?case_id=`.
 pub async fn documents_of_case(sess: &Session, case_id: &str) -> Result<Vec<Document>> {
     let v = sess.get_json(&format!("/api/documents?case_id={}", urlencode(case_id))).await?;
