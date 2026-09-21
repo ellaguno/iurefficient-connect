@@ -23,10 +23,12 @@ impl AppId {
         [AppId::Transcribe, AppId::Editor, AppId::Dav]
     }
     pub fn parse(s: &str) -> Option<AppId> {
-        match s.to_ascii_lowercase().as_str() {
-            "transcribe" | "iuretranscribe" => Some(AppId::Transcribe),
-            "editor" | "iureditor" => Some(AppId::Editor),
-            "dav" | "iuredav" => Some(AppId::Dav),
+        let s = s.trim().to_ascii_lowercase();
+        let s = s.strip_prefix("iure").unwrap_or(&s);
+        match s {
+            "transcribe" => Some(AppId::Transcribe),
+            "editor" | "ditor" => Some(AppId::Editor),
+            "dav" => Some(AppId::Dav),
             _ => None,
         }
     }
@@ -209,6 +211,10 @@ mod tests {
     fn catalogo_y_urls() {
         assert_eq!(APPS.len(), 3);
         assert_eq!(AppId::parse("IureEditor"), Some(AppId::Editor));
+        assert_eq!(AppId::parse("iureditor"), Some(AppId::Editor));
+        assert_eq!(AppId::parse("editor"), Some(AppId::Editor));
+        assert_eq!(AppId::parse("IureTranscribe"), Some(AppId::Transcribe));
+        assert_eq!(AppId::parse("iuredav"), Some(AppId::Dav));
         assert_eq!(download_url(def(AppId::Dav)), "https://github.com/ellaguno/iuredav/releases/latest");
         assert_eq!(installed().len(), 3);
     }
