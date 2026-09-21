@@ -140,6 +140,12 @@ impl Session {
     }
 
     /// `POST /api/auth/login`. Devuelve la sesión abierta o la petición de TOTP.
+    /// `POST /api/auth/logout` (invalida el acceso y borra las cookies).
+    pub async fn logout(&self) -> Result<()> {
+        let _ = self.send(self.request(Method::POST, "/api/auth/logout").await?).await;
+        Ok(())
+    }
+
     pub async fn login(&self, password: &str) -> Result<Login> {
         let url = self.acc.api("/api/auth/login")?;
         let resp = self
@@ -167,7 +173,7 @@ impl Session {
     pub async fn verify_totp(&self, totp_token: &str, code: &str) -> Result<User> {
         let url = self.acc.api("/api/auth/verify-totp")?;
         let resp = self
-            .send(self.http.post(url).bearer_auth(totp_token).json(&serde_json::json!({"totp_token": totp_token, "code": code.trim(), "token": code.trim()})))
+            .send(self.http.post(url).json(&serde_json::json!({"totp_token": totp_token, "code": code.trim()})))
             .await?;
         let status = resp.status();
         let body: Value = resp.json().await.unwrap_or(Value::Null);

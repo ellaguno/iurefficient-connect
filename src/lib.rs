@@ -6,11 +6,13 @@
 //! - [`webdav`]: árbol de documentos (listar, subir, descargar) con contraseña `iurdav_…`.
 //! - [`mcp`]: servidor MCP de sólo lectura con token `iurmcp_…`.
 //! - [`rest`]: API REST con sesión de cookies (JWT + CSRF + refresco).
+//! - [`api`]: operaciones tipadas: proyectos, documentos, minutas por blueprint, CRM, horas.
 //! - [`releases`]: aviso de versiones nuevas publicadas en GitHub.
 //!
 //! Sin dependencias de Tauri ni de ninguna interfaz: cada app pone su propia UI encima.
 
 pub mod account;
+pub mod api;
 pub mod mcp;
 pub mod releases;
 pub mod rest;
