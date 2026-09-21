@@ -15,6 +15,7 @@ Tauri ni de ninguna interfaz: cada app pone su propia pantalla encima.
 | `rest` | API REST con sesión de cookies (JWT + CSRF), inicio de sesión con TOTP opcional, refresco automático del acceso, sesión exportable al llavero | correo y contraseña |
 | `api` | Operaciones tipadas sobre la sesión REST: proyectos (`cases`), documentos (subir, listar, descargar), minutas por blueprint (`ai_options`, `compose`, `compose_status`), compromisos → tareas, horas (`add_time_entry`), CRM (leads, oportunidades, adjuntos, actividades), chat con IA (`global_chat`) y **contraseñas de aplicación WebDAV** (`create_webdav_token`: la app inicia sesión con la cuenta y crea la `iurdav_…` sin que el usuario la vea) | sesión REST |
 | `releases` | Aviso de versiones nuevas publicadas en GitHub | — |
+| `apps` | Catálogo de las tres apps: detecta cuáles están instaladas (Linux, Windows, macOS), las lanza con argumentos («Abrir con IureEditor») y consulta su última versión | — |
 
 ## Uso
 

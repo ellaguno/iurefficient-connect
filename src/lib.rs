@@ -8,11 +8,13 @@
 //! - [`rest`]: API REST con sesión de cookies (JWT + CSRF + refresco).
 //! - [`api`]: operaciones tipadas: proyectos, documentos, minutas por blueprint, CRM, horas.
 //! - [`releases`]: aviso de versiones nuevas publicadas en GitHub.
+//! - [`apps`]: catálogo de las apps de escritorio: detección, lanzamiento y última versión.
 //!
 //! Sin dependencias de Tauri ni de ninguna interfaz: cada app pone su propia UI encima.
 
 pub mod account;
 pub mod api;
+pub mod apps;
 pub mod mcp;
 pub mod releases;
 pub mod rest;

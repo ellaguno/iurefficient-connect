@@ -32,6 +32,25 @@ pub fn es_mas_nueva(actual: &str, ultima: &str) -> bool {
     }
 }
 
+/// Última versión publicada (sin comparar con nada); `Ok(None)` si no hay releases.
+pub async fn latest_version(owner_repo: &str, user_agent: &str) -> Result<Option<String>> {
+    let url = format!("https://api.github.com/repos/{owner_repo}/releases/latest");
+    let resp = reqwest::Client::builder()
+        .user_agent(user_agent)
+        .timeout(std::time::Duration::from_secs(15))
+        .build()?
+        .get(&url)
+        .header("Accept", "application/vnd.github+json")
+        .send()
+        .await
+        .context("no se pudo consultar GitHub")?;
+    if resp.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+    let r: GhRelease = resp.error_for_status()?.json().await?;
+    Ok(Some(r.tag_name.trim_start_matches('v').to_string()))
+}
+
 /// Consulta la última release de `owner/repo`; `Ok(None)` si no hay una más nueva.
 pub async fn consultar(owner_repo: &str, actual: &str, user_agent: &str) -> Result<Option<Release>> {
     let url = format!("https://api.github.com/repos/{owner_repo}/releases/latest");
