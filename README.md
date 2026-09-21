@@ -13,7 +13,7 @@ Tauri ni de ninguna interfaz: cada app pone su propia pantalla encima.
 | `webdav` | Árbol de documentos: listar carpetas con permisos, subir (con progreso, reintento como `.txt` si la instancia rechaza `.srt`/`.vtt`), descargar | contraseña de aplicación `iurdav_…` |
 | `mcp` | Servidor MCP de sólo lectura: `listar_proyectos`, `buscar_en_expedientes`, `detalle_proyecto`, … | token `iurmcp_…` |
 | `rest` | API REST con sesión de cookies (JWT + CSRF), inicio de sesión con TOTP opcional, refresco automático del acceso, sesión exportable al llavero | correo y contraseña |
-| `api` | Operaciones tipadas sobre la sesión REST: proyectos (`cases`), documentos (subir, listar, descargar), minutas por blueprint (`ai_options`, `compose`, `compose_status`), compromisos → tareas, horas (`add_time_entry`), CRM (leads, oportunidades, adjuntos, actividades) | sesión REST |
+| `api` | Operaciones tipadas sobre la sesión REST: proyectos (`cases`), documentos (subir, listar, descargar), minutas por blueprint (`ai_options`, `compose`, `compose_status`), compromisos → tareas, horas (`add_time_entry`), CRM (leads, oportunidades, adjuntos, actividades), chat con IA (`global_chat`) y **contraseñas de aplicación WebDAV** (`create_webdav_token`: la app inicia sesión con la cuenta y crea la `iurdav_…` sin que el usuario la vea) | sesión REST |
 | `releases` | Aviso de versiones nuevas publicadas en GitHub | — |
 
 ## Uso

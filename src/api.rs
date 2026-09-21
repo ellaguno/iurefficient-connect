@@ -355,6 +355,74 @@ pub async fn apply_commitments(sess: &Session, doc_id: &str, items: &[Commitment
 }
 
 // ---------------------------------------------------------------------------
+// Contraseñas de aplicación WebDAV (cada usuario gestiona las suyas; máximo 20 activas)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WebDavTokenInfo {
+    pub id: String,
+    pub name: String,
+    pub token_prefix: Option<String>,
+    pub created_at: Option<String>,
+    pub expires_at: Option<String>,
+    pub last_used_at: Option<String>,
+}
+
+fn webdav_token_from(v: &Value) -> WebDavTokenInfo {
+    WebDavTokenInfo {
+        id: s(v, "id"),
+        name: s(v, "name"),
+        token_prefix: opt(v, "token_prefix"),
+        created_at: opt(v, "created_at"),
+        expires_at: opt(v, "expires_at"),
+        last_used_at: opt(v, "last_used_at"),
+    }
+}
+
+/// `GET /api/system/webdav/tokens` (nunca devuelve secretos).
+pub async fn list_webdav_tokens(sess: &Session) -> Result<Vec<WebDavTokenInfo>> {
+    let v = sess.get_json("/api/system/webdav/tokens").await?;
+    Ok(v["tokens"].as_array().map(|a| a.iter().map(webdav_token_from).collect()).unwrap_or_default())
+}
+
+/// Contraseña de aplicación recién creada: el secreto se muestra una sola vez.
+#[derive(Debug, Clone)]
+pub struct NewWebDavToken {
+    pub info: WebDavTokenInfo,
+    pub secret: String,
+    pub username: String,
+}
+
+/// `POST /api/system/webdav/tokens`: crea una contraseña de aplicación `iurdav_…` a nombre
+/// del usuario de la sesión. `ttl_days = None` → sin caducidad.
+pub async fn create_webdav_token(sess: &Session, name: &str, ttl_days: Option<u32>) -> Result<NewWebDavToken> {
+    let body = json!({"name": name, "ttl_days": ttl_days.map(|d| d as i64).unwrap_or(0)});
+    let v = sess.post_json("/api/system/webdav/tokens", &body).await.map_err(|e| {
+        if e.to_string().contains("Demasiados tokens") {
+            anyhow!("Ya tienes 20 contraseñas de aplicación activas en la instancia; revoca alguna desde tu perfil")
+        } else {
+            e
+        }
+    })?;
+    let secret = s(&v, "secret");
+    if secret.is_empty() {
+        return Err(anyhow!("La instancia no devolvió la contraseña de aplicación"));
+    }
+    Ok(NewWebDavToken { info: webdav_token_from(&v["token"]), secret, username: opt(&v, "username").unwrap_or_else(|| sess.account().email.clone()) })
+}
+
+/// `DELETE /api/system/webdav/tokens/<id>`.
+pub async fn revoke_webdav_token(sess: &Session, token_id: &str) -> Result<()> {
+    let rb = sess.request(reqwest::Method::DELETE, &format!("/api/system/webdav/tokens/{token_id}")).await?;
+    let resp = rb.send().await?;
+    if !resp.status().is_success() {
+        return Err(anyhow!("No se pudo revocar la contraseña de aplicación ({})", resp.status()));
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // Chat con IA sobre documentos
 // ---------------------------------------------------------------------------
 
