@@ -355,6 +355,32 @@ pub async fn apply_commitments(sess: &Session, doc_id: &str, items: &[Commitment
 }
 
 // ---------------------------------------------------------------------------
+// Chat con IA sobre documentos
+// ---------------------------------------------------------------------------
+
+/// `POST /api/chat/global/chat`: envía un mensaje al asistente de la instancia con un
+/// `system_prompt` propio y documentos como contexto. Devuelve el texto de la respuesta.
+/// Consume la cuota de IA del plan (403 `quota_exceeded` si se agotó).
+pub async fn global_chat(sess: &Session, message: &str, system_prompt: Option<&str>, document_ids: &[String]) -> Result<String> {
+    let mut body = json!({"message": message, "document_ids": document_ids, "enable_url_extraction": false});
+    if let Some(sp) = system_prompt.filter(|s| !s.trim().is_empty()) {
+        body["system_prompt"] = json!(sp);
+    }
+    let v = sess.post_json("/api/chat/global/chat", &body).await.map_err(|e| {
+        if e.to_string().contains("quota_exceeded") || e.to_string().contains("403") {
+            anyhow!("Se alcanzó la cuota de IA del plan en la instancia")
+        } else {
+            e
+        }
+    })?;
+    let content = v["assistant_message"]["content"].as_str().unwrap_or_default().trim().to_string();
+    if content.is_empty() {
+        return Err(anyhow!("La instancia no devolvió respuesta"));
+    }
+    Ok(content)
+}
+
+// ---------------------------------------------------------------------------
 // Horas
 // ---------------------------------------------------------------------------
 
