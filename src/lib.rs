@@ -1,7 +1,8 @@
 //! Conector común de las aplicaciones de escritorio de Iurefficient
 //! (IureTranscribe, IureEditor, IureDav) con una instancia.
 //!
-//! - [`account`]: identidad de la instancia (dominio normalizado) y del usuario.
+//! - [`account`]: identidad de la instancia (dominio normalizado) y del usuario, y la
+//!   cuenta activa compartida (qué instancia y correo usó la última app que inició sesión).
 //! - [`secrets`]: credenciales en el llavero del sistema, compartidas entre apps.
 //! - [`webdav`]: árbol de documentos (listar, subir, descargar) con contraseña `iurdav_…`.
 //! - [`mcp`]: servidor MCP de sólo lectura con token `iurmcp_…`.
@@ -22,9 +23,12 @@ pub mod rest;
 pub mod secrets;
 pub mod webdav;
 
-pub use account::Account;
+pub use account::{Account, ActiveAccount};
 
 /// Nombre de agente HTTP que envían las apps (cada una añade su nombre y versión).
 pub fn user_agent(app: &str, version: &str) -> String {
-    format!("{app}/{version} iurefficient-connect/{}", env!("CARGO_PKG_VERSION"))
+    format!(
+        "{app}/{version} iurefficient-connect/{}",
+        env!("CARGO_PKG_VERSION")
+    )
 }
