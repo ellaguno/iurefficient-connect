@@ -16,11 +16,12 @@ pub enum AppId {
     Transcribe,
     Editor,
     Dav,
+    Ocr,
 }
 
 impl AppId {
-    pub fn all() -> [AppId; 3] {
-        [AppId::Transcribe, AppId::Editor, AppId::Dav]
+    pub fn all() -> [AppId; 4] {
+        [AppId::Transcribe, AppId::Editor, AppId::Dav, AppId::Ocr]
     }
     pub fn parse(s: &str) -> Option<AppId> {
         let s = s.trim().to_ascii_lowercase();
@@ -29,6 +30,7 @@ impl AppId {
             "transcribe" => Some(AppId::Transcribe),
             "editor" | "ditor" => Some(AppId::Editor),
             "dav" => Some(AppId::Dav),
+            "ocr" => Some(AppId::Ocr),
             _ => None,
         }
     }
@@ -81,6 +83,16 @@ pub const APPS: &[AppDef] = &[
         linux_bin: "iuredav-app",
         product: "IureDav",
         windows_exe: "iuredav-app",
+    },
+    AppDef {
+        id: AppId::Ocr,
+        name: "IureOCR",
+        description: "Reconoce el texto de escaneos y fotos en tu equipo y deja PDF buscables listos para Iurefficient.",
+        repo: "ellaguno/iureocr",
+        scheme: "iureocr",
+        linux_bin: "iureocr",
+        product: "IureOCR",
+        windows_exe: "iureocr",
     },
 ];
 
@@ -271,13 +283,15 @@ mod tests {
 
     #[test]
     fn catalogo_y_urls() {
-        assert_eq!(APPS.len(), 3);
+        assert_eq!(APPS.len(), 4);
         assert_eq!(AppId::parse("IureEditor"), Some(AppId::Editor));
         assert_eq!(AppId::parse("iureditor"), Some(AppId::Editor));
         assert_eq!(AppId::parse("editor"), Some(AppId::Editor));
         assert_eq!(AppId::parse("IureTranscribe"), Some(AppId::Transcribe));
         assert_eq!(AppId::parse("iuredav"), Some(AppId::Dav));
+        assert_eq!(AppId::parse("IureOCR"), Some(AppId::Ocr));
+        assert_eq!(download_url(def(AppId::Ocr)), "https://github.com/ellaguno/iureocr/releases/latest");
         assert_eq!(download_url(def(AppId::Dav)), "https://github.com/ellaguno/iuredav/releases/latest");
-        assert_eq!(installed().len(), 3);
+        assert_eq!(installed().len(), 4);
     }
 }
