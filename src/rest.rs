@@ -12,7 +12,7 @@ use reqwest::{Client, Method, RequestBuilder, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::{Duration, SystemTime};
 use tokio::sync::Mutex;
 
 use crate::Account;
@@ -21,6 +21,7 @@ pub const CSRF_HEADER: &str = "X-CSRF-TOKEN";
 const CSRF_ACCESS_COOKIE: &str = "csrf_access_token";
 const CSRF_REFRESH_COOKIE: &str = "csrf_refresh_token";
 const REFRESH_COOKIE: &str = "refresh_token_cookie";
+const ACCESS_COOKIE: &str = "access_token_cookie";
 /// Antes de que caduque el acceso (1 h) se renueva de forma preventiva.
 const REFRESH_EVERY: Duration = Duration::from_secs(50 * 60);
 
@@ -58,7 +59,9 @@ pub struct Session {
     acc: Account,
     jar: Arc<Jar>,
     http: Client,
-    last_refresh: Mutex<Option<Instant>>,
+    /// Hora de reloj (no `Instant`): tras suspender el equipo el acceso ya caducó
+    /// aunque el reloj monótono no haya avanzado.
+    last_refresh: Mutex<Option<SystemTime>>,
     /// Sincronizar las cookies con la entrada compartida del llavero (ver [`Session::set_shared`]).
     shared: std::sync::atomic::AtomicBool,
 }
@@ -126,11 +129,33 @@ impl Session {
     #[cfg(not(feature = "keyring"))]
     pub fn push_shared(&self) {}
 
+    /// La instancia pone cada cookie en su ruta: el acceso en `/api/`, el refresco
+    /// sólo en `/api/auth/refresh` y las CSRF en la raíz. Al restaurarlas hay que
+    /// respetarlas: con otra ruta convivirían con las del servidor y se mandaría
+    /// la vieja.
+    fn cookie_path(&self, name: &str) -> String {
+        let path = match name {
+            ACCESS_COOKIE => "/api/",
+            REFRESH_COOKIE => "/api/auth/refresh",
+            _ => "/",
+        };
+        self.acc.api(path).map(|u| u.path().to_string()).unwrap_or_else(|_| path.to_string())
+    }
+
+    /// URL a la que el navegador mandaría todas las cookies de la sesión.
+    fn all_cookies_url(&self) -> Option<reqwest::Url> {
+        self.acc.api("/api/auth/refresh").ok()
+    }
+
     fn add_cookies(&self, saved: &SessionExport) {
         for kv in &saved.cookies {
-            // Path amplio para que reqwest las envíe a /api/…; el servidor sólo lee las suyas.
+            let name = kv.split('=').next().unwrap_or_default().trim();
+            if name.is_empty() {
+                continue;
+            }
+            let path = self.cookie_path(name);
             self.jar
-                .add_cookie_str(&format!("{kv}; Path=/; Secure; HttpOnly"), &self.acc.base);
+                .add_cookie_str(&format!("{kv}; Path={path}; Secure; HttpOnly"), &self.acc.base);
         }
     }
 
@@ -154,7 +179,8 @@ impl Session {
     }
 
     fn cookie(&self, name: &str) -> Option<String> {
-        let hv = self.jar.cookies(&self.acc.base)?;
+        // Desde la raíz sólo se verían las CSRF: el refresco vive en /api/auth/refresh.
+        let hv = self.jar.cookies(&self.all_cookies_url()?)?;
         let s = hv.to_str().ok()?;
         s.split(';')
             .map(str::trim)
@@ -169,8 +195,8 @@ impl Session {
     /// Cookies de la sesión, para guardarlas en el llavero.
     pub fn export(&self) -> SessionExport {
         let cookies = self
-            .jar
-            .cookies(&self.acc.base)
+            .all_cookies_url()
+            .and_then(|u| self.jar.cookies(&u))
             .and_then(|hv| hv.to_str().ok().map(str::to_string))
             .map(|s| {
                 s.split(';')
@@ -213,11 +239,25 @@ impl Session {
         Ok(rb)
     }
 
+    /// Envía y, si el acceso ya no vale (401: caducó, se suspendió el equipo u otra
+    /// app renovó), renueva una vez y repite.
+    async fn send_retrying(&self, method: Method, path: &str, body: Option<&Value>) -> Result<reqwest::Response> {
+        let build = |rb: RequestBuilder| match body {
+            Some(b) => rb.json(b),
+            None => rb,
+        };
+        let resp = self.send(build(self.request(method.clone(), path).await?)).await?;
+        if resp.status() == StatusCode::UNAUTHORIZED && self.has_refresh() && self.refresh().await.is_ok() {
+            return self.send(build(self.request(method, path).await?)).await;
+        }
+        Ok(resp)
+    }
+
     async fn ensure_fresh(&self) -> Result<()> {
         let due = {
             let last = self.last_refresh.lock().await;
             match *last {
-                Some(t) => t.elapsed() > REFRESH_EVERY,
+                Some(t) => t.elapsed().map_or(true, |e| e > REFRESH_EVERY),
                 None => false,
             }
         };
@@ -261,7 +301,7 @@ impl Session {
                         .to_string();
                     return Ok(Login::TotpRequired { totp_token: t });
                 }
-                *self.last_refresh.lock().await = Some(Instant::now());
+                *self.last_refresh.lock().await = Some(SystemTime::now());
                 self.push_shared();
                 Ok(Login::Ok(user_from(&body).unwrap_or_default()))
             }
@@ -292,7 +332,7 @@ impl Session {
         if !status.is_success() {
             return Err(anyhow!("Código no válido ({status})"));
         }
-        *self.last_refresh.lock().await = Some(Instant::now());
+        *self.last_refresh.lock().await = Some(SystemTime::now());
         self.push_shared();
         Ok(user_from(&body).unwrap_or_default())
     }
@@ -310,7 +350,7 @@ impl Session {
         let resp = self.send(rb).await?;
         match resp.status() {
             s if s.is_success() => {
-                *self.last_refresh.lock().await = Some(Instant::now());
+                *self.last_refresh.lock().await = Some(SystemTime::now());
                 self.push_shared();
                 Ok(())
             }
@@ -321,9 +361,7 @@ impl Session {
 
     /// `GET /api/auth/me`.
     pub async fn me(&self) -> Result<User> {
-        let resp = self
-            .send(self.request(Method::GET, "/api/auth/me").await?)
-            .await?;
+        let resp = self.send_retrying(Method::GET, "/api/auth/me", None).await?;
         if resp.status() == StatusCode::UNAUTHORIZED {
             return Err(anyhow!("Sesión no válida; inicia sesión de nuevo"));
         }
@@ -333,15 +371,13 @@ impl Session {
 
     /// GET que devuelve JSON.
     pub async fn get_json(&self, path: &str) -> Result<Value> {
-        let resp = self.send(self.request(Method::GET, path).await?).await?;
+        let resp = self.send_retrying(Method::GET, path, None).await?;
         json_or_error(resp).await
     }
 
     /// POST con cuerpo JSON.
     pub async fn post_json(&self, path: &str, body: &Value) -> Result<Value> {
-        let resp = self
-            .send(self.request(Method::POST, path).await?.json(body))
-            .await?;
+        let resp = self.send_retrying(Method::POST, path, Some(body)).await?;
         json_or_error(resp).await
     }
 
@@ -377,4 +413,54 @@ async fn json_or_error(resp: reqwest::Response) -> Result<Value> {
         .map(str::to_string)
         .unwrap_or_else(|| text.chars().take(200).collect());
     Err(anyhow!("{status}: {msg}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn session() -> Session {
+        Session::new(Account::new("x.example.com", "a@b.c").unwrap(), "test").unwrap()
+    }
+
+    /// Las cookies como las pone la instancia (cada una en su ruta).
+    fn server_cookies(s: &Session, suffix: &str) {
+        for c in [
+            format!("access_token_cookie=A{suffix}; Path=/api/; Secure; HttpOnly"),
+            format!("refresh_token_cookie=R{suffix}; Path=/api/auth/refresh; Secure; HttpOnly"),
+            format!("csrf_access_token=CA{suffix}; Path=/; Secure"),
+            format!("csrf_refresh_token=CR{suffix}; Path=/; Secure"),
+        ] {
+            s.jar.add_cookie_str(&c, &s.acc.base);
+        }
+    }
+
+    #[test]
+    fn export_incluye_acceso_y_refresco() {
+        let s = session();
+        server_cookies(&s, "1");
+        assert!(s.has_refresh());
+        let mut names: Vec<String> = s.export().cookies.iter().map(|c| c.split('=').next().unwrap().to_string()).collect();
+        names.sort();
+        assert_eq!(names, ["access_token_cookie", "csrf_access_token", "csrf_refresh_token", "refresh_token_cookie"]);
+    }
+
+    #[test]
+    fn import_respeta_rutas_y_reemplaza_las_viejas() {
+        let a = session();
+        server_cookies(&a, "1");
+        let saved = a.export();
+        // Otra app con cookies viejas en memoria recibe las nuevas del llavero.
+        let b = session();
+        server_cookies(&b, "0");
+        b.add_cookies(&saved);
+        let refresh = b.jar.cookies(&b.acc.api("/api/auth/refresh").unwrap()).unwrap();
+        let refresh = refresh.to_str().unwrap();
+        assert!(refresh.contains("refresh_token_cookie=R1") && !refresh.contains("R0"), "{refresh}");
+        assert!(refresh.contains("csrf_refresh_token=CR1") && !refresh.contains("CR0"), "{refresh}");
+        let api = b.jar.cookies(&b.acc.api("/api/cases").unwrap()).unwrap();
+        let api = api.to_str().unwrap();
+        assert!(api.contains("access_token_cookie=A1") && !api.contains("refresh_token_cookie"), "{api}");
+        assert_eq!(b.cookie(CSRF_ACCESS_COOKIE).as_deref(), Some("CA1"));
+    }
 }
