@@ -4,6 +4,8 @@
 use anyhow::{Context, Result};
 use serde::Deserialize;
 
+use crate::lang;
+
 #[derive(Debug, Clone)]
 pub struct Release {
     pub version: String,
@@ -43,7 +45,7 @@ pub async fn latest_version(owner_repo: &str, user_agent: &str) -> Result<Option
         .header("Accept", "application/vnd.github+json")
         .send()
         .await
-        .context("no se pudo consultar GitHub")?;
+        .with_context(|| lang::pick("could not reach GitHub", "no se pudo consultar GitHub"))?;
     if resp.status() == reqwest::StatusCode::NOT_FOUND {
         return Ok(None);
     }
@@ -62,7 +64,7 @@ pub async fn consultar(owner_repo: &str, actual: &str, user_agent: &str) -> Resu
         .header("Accept", "application/vnd.github+json")
         .send()
         .await
-        .context("no se pudo consultar GitHub")?
+        .with_context(|| lang::pick("could not reach GitHub", "no se pudo consultar GitHub"))?
         .error_for_status()?
         .json()
         .await?;

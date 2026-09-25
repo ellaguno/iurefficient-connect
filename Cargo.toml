@@ -1,10 +1,10 @@
 [package]
 name = "iurefficient-connect"
-version = "0.5.2"
+version = "0.6.0"
 edition = "2021"
 rust-version = "1.80"
 license = "MIT"
-description = "Conector común de las aplicaciones de escritorio con instancias de Iurefficient: cuenta, llavero, WebDAV, MCP y API REST."
+description = "Shared connector between the Iurefficient desktop apps and Iurefficient instances: account, keyring, WebDAV, MCP, REST API and UI language."
 repository = "https://github.com/ellaguno/iurefficient-connect"
 readme = "README.md"
 keywords = ["iurefficient", "webdav", "mcp", "tauri"]
@@ -24,6 +24,7 @@ percent-encoding = "2"
 roxmltree = "0.21"
 log = "0.4"
 dirs = "6"
+sys-locale = "0.3"
 
 # Llavero del sistema (opcional): en Linux usa Secret Service por D-Bus, como IureDav.
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"], optional = true }

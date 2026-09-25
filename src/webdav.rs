@@ -14,7 +14,7 @@ use std::path::Path;
 use std::time::Duration;
 use url::Url;
 
-use crate::Account;
+use crate::{lang, tr, Account};
 
 /// Carpeta de sólo navegación que expone el servidor; no admite escrituras.
 const CARPETA_VISTAS: &str = "Vistas (solo navegar)";
@@ -30,7 +30,7 @@ pub struct WebDav {
 impl WebDav {
     pub fn new(acc: Account, password: &str, user_agent: &str) -> Result<Self> {
         if password.trim().is_empty() {
-            return Err(anyhow!("Falta la contraseña de aplicación (iurdav_…)"));
+            return Err(anyhow!(lang::pick("The app password (iurdav_…) is missing", "Falta la contraseña de aplicación (iurdav_…)")));
         }
         Ok(Self { acc, password: password.trim().to_string(), user_agent: user_agent.to_string() })
     }
@@ -38,7 +38,7 @@ impl WebDav {
     fn webdav_url(&self, folder: &str) -> Result<Url> {
         let mut u = self.acc.base.join("webdav/")?;
         {
-            let mut segs = u.path_segments_mut().map_err(|_| anyhow!("URL base no válida"))?;
+            let mut segs = u.path_segments_mut().map_err(|_| anyhow!(lang::pick("Invalid base URL", "URL base no válida")))?;
             segs.pop_if_empty();
             for part in folder.split('/').filter(|p| !p.is_empty()) {
                 segs.push(part);
@@ -51,7 +51,7 @@ impl WebDav {
     fn file_url(&self, folder: &str, file_name: &str) -> Result<Url> {
         let mut u = self.acc.base.join("webdav/")?;
         {
-            let mut segs = u.path_segments_mut().map_err(|_| anyhow!("URL base no válida"))?;
+            let mut segs = u.path_segments_mut().map_err(|_| anyhow!(lang::pick("Invalid base URL", "URL base no válida")))?;
             segs.pop_if_empty();
             for part in folder.split('/').filter(|p| !p.is_empty()) {
                 segs.push(part);
@@ -120,12 +120,12 @@ pub fn fallback_name(name: &str) -> Option<String> {
 
 fn explain_status(status: StatusCode) -> String {
     match status {
-        StatusCode::UNAUTHORIZED => "Credenciales rechazadas. Revisa el correo y la contraseña de aplicación (iurdav_…).".into(),
-        StatusCode::FORBIDDEN => "Sin permiso para esa carpeta o usuario desactivado.".into(),
-        StatusCode::NOT_FOUND => "El servidor no expone /webdav. Un administrador debe activar WebDAV en la instancia (Ajustes → WebDAV) y reiniciar.".into(),
-        StatusCode::METHOD_NOT_ALLOWED => "Operación no permitida por el servidor en esa ruta.".into(),
-        StatusCode::PAYLOAD_TOO_LARGE => "El archivo supera el tamaño máximo que acepta la instancia.".into(),
-        s => format!("El servidor respondió {s}."),
+        StatusCode::UNAUTHORIZED => lang::pick("Credentials rejected. Check the email and the app password (iurdav_…).", "Credenciales rechazadas. Revisa el correo y la contraseña de aplicación (iurdav_…).").into(),
+        StatusCode::FORBIDDEN => lang::pick("No permission for that folder, or the user is disabled.", "Sin permiso para esa carpeta o usuario desactivado.").into(),
+        StatusCode::NOT_FOUND => lang::pick("The server does not expose /webdav. An administrator must enable WebDAV on the instance (Settings → WebDAV) and restart.", "El servidor no expone /webdav. Un administrador debe activar WebDAV en la instancia (Ajustes → WebDAV) y reiniciar.").into(),
+        StatusCode::METHOD_NOT_ALLOWED => lang::pick("The server does not allow that operation on this path.", "Operación no permitida por el servidor en esa ruta.").into(),
+        StatusCode::PAYLOAD_TOO_LARGE => lang::pick("The file exceeds the maximum size the instance accepts.", "El archivo supera el tamaño máximo que acepta la instancia.").into(),
+        s => tr!("The server responded {s}.", "El servidor respondió {s}."),
     }
 }
 
@@ -146,7 +146,7 @@ pub async fn list(&self, folder: &str) -> Result<Listing> {
         .body(body)
         .send()
         .await
-        .with_context(|| format!("No se pudo conectar con {}", self.acc.base))?;
+        .with_context(|| tr!("Could not connect to {}", "No se pudo conectar con {}", self.acc.base))?;
     let status = resp.status();
     if !(status.is_success() || status == StatusCode::MULTI_STATUS) {
         return Err(anyhow!(explain_status(status)));
@@ -157,7 +157,7 @@ pub async fn list(&self, folder: &str) -> Result<Listing> {
 }
 
 fn parse_multistatus(xml: &str, folder: &str, self_path: &str) -> Result<Listing> {
-    let doc = roxmltree::Document::parse(xml).map_err(|e| anyhow!("Respuesta WebDAV no válida: {e}"))?;
+    let doc = roxmltree::Document::parse(xml).map_err(|e| anyhow!(tr!("Invalid WebDAV response: {e}", "Respuesta WebDAV no válida: {e}")))?;
     let folder_norm = folder.trim_matches('/').to_string();
     let self_norm = percent_decode_str(self_path).decode_utf8_lossy().trim_end_matches('/').to_string();
     let mut entries = Vec::new();
@@ -261,8 +261,8 @@ where
     let name = remote_name
         .map(str::to_string)
         .or_else(|| local.file_name().map(|n| n.to_string_lossy().into_owned()))
-        .ok_or_else(|| anyhow!("Nombre de archivo no válido"))?;
-    let meta = tokio::fs::metadata(local).await.with_context(|| format!("No se encontró {}", local.display()))?;
+        .ok_or_else(|| anyhow!(lang::pick("Invalid file name", "Nombre de archivo no válido")))?;
+    let meta = tokio::fs::metadata(local).await.with_context(|| tr!("{} not found", "No se encontró {}", local.display()))?;
     let total = meta.len();
     let file = tokio::fs::File::open(local).await?;
     let mut sent = 0u64;
@@ -285,7 +285,7 @@ where
     if let Some(m) = mtime {
         req = req.header("X-OC-Mtime", m);
     }
-    let resp = req.body(body).send().await.with_context(|| format!("No se pudo subir {name}"))?;
+    let resp = req.body(body).send().await.with_context(|| tr!("Could not upload {name}", "No se pudo subir {name}"))?;
     let status = resp.status();
     match status {
         StatusCode::CREATED | StatusCode::OK | StatusCode::NO_CONTENT => Ok(Uploaded {
@@ -294,9 +294,10 @@ where
             created: status == StatusCode::CREATED,
             renamed_from: None,
         }),
-        StatusCode::FORBIDDEN => Err(anyhow!(
+        StatusCode::FORBIDDEN => Err(anyhow!(tr!(
+            "{name}: the instance rejected the file (403). This usually means the extension is not among the instance's allowed types, or there is no permission on the folder.",
             "{name}: la instancia rechazó el archivo (403). Suele deberse a que la extensión no está en los tipos permitidos de la instancia, o a falta de permiso en la carpeta."
-        )),
+        ))),
         s => Err(anyhow!("{name}: {}", explain_status(s))),
     }
 }

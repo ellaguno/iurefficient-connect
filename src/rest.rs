@@ -15,7 +15,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tokio::sync::Mutex;
 
-use crate::Account;
+use crate::{lang, tr, Account};
 
 pub const CSRF_HEADER: &str = "X-CSRF-TOKEN";
 const CSRF_ACCESS_COOKIE: &str = "csrf_access_token";
@@ -219,7 +219,7 @@ impl Session {
         let resp = req
             .send()
             .await
-            .with_context(|| format!("No se pudo conectar con {}", self.acc.base))?;
+            .with_context(|| tr!("Could not connect to {}", "No se pudo conectar con {}", self.acc.base))?;
         Ok(resp)
     }
 
@@ -305,15 +305,16 @@ impl Session {
                 self.push_shared();
                 Ok(Login::Ok(user_from(&body).unwrap_or_default()))
             }
-            StatusCode::UNAUTHORIZED => Err(anyhow!("Correo o contraseña incorrectos")),
-            StatusCode::FORBIDDEN => Err(anyhow!("La cuenta está desactivada")),
+            StatusCode::UNAUTHORIZED => Err(anyhow!(lang::pick("Incorrect email or password", "Correo o contraseña incorrectos"))),
+            StatusCode::FORBIDDEN => Err(anyhow!(lang::pick("The account is disabled", "La cuenta está desactivada"))),
             StatusCode::TOO_MANY_REQUESTS => {
-                Err(anyhow!("Demasiados intentos; espera unos minutos"))
+                Err(anyhow!(lang::pick("Too many attempts; wait a few minutes", "Demasiados intentos; espera unos minutos")))
             }
-            s => Err(anyhow!(
+            s => Err(anyhow!(tr!(
+                "The server responded {s}: {}",
                 "El servidor respondió {s}: {}",
                 body.get("error").and_then(|e| e.as_str()).unwrap_or("")
-            )),
+            ))),
         }
     }
 
@@ -330,7 +331,7 @@ impl Session {
         let status = resp.status();
         let body: Value = resp.json().await.unwrap_or(Value::Null);
         if !status.is_success() {
-            return Err(anyhow!("Código no válido ({status})"));
+            return Err(anyhow!(tr!("Invalid code ({status})", "Código no válido ({status})")));
         }
         *self.last_refresh.lock().await = Some(SystemTime::now());
         self.push_shared();
@@ -354,8 +355,8 @@ impl Session {
                 self.push_shared();
                 Ok(())
             }
-            StatusCode::UNAUTHORIZED => Err(anyhow!("La sesión caducó; vuelve a iniciar sesión")),
-            s => Err(anyhow!("No se pudo renovar la sesión ({s})")),
+            StatusCode::UNAUTHORIZED => Err(anyhow!(lang::pick("The session expired; sign in again", "La sesión caducó; vuelve a iniciar sesión"))),
+            s => Err(anyhow!(tr!("Could not renew the session ({s})", "No se pudo renovar la sesión ({s})"))),
         }
     }
 
@@ -363,7 +364,7 @@ impl Session {
     pub async fn me(&self) -> Result<User> {
         let resp = self.send_retrying(Method::GET, "/api/auth/me", None).await?;
         if resp.status() == StatusCode::UNAUTHORIZED {
-            return Err(anyhow!("Sesión no válida; inicia sesión de nuevo"));
+            return Err(anyhow!(lang::pick("Invalid session; sign in again", "Sesión no válida; inicia sesión de nuevo")));
         }
         let body: Value = resp.error_for_status()?.json().await?;
         Ok(user_from(&body).unwrap_or_default())

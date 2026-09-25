@@ -8,7 +8,7 @@ use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::releases;
+use crate::{lang, releases, tr};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -42,7 +42,10 @@ impl AppId {
 pub struct AppDef {
     pub id: AppId,
     pub name: &'static str,
-    pub description: &'static str,
+    /// Descripción en inglés; usa [`AppDef::description`] para la del idioma actual.
+    pub description_en: &'static str,
+    /// Descripción en español.
+    pub description_es: &'static str,
     pub repo: &'static str,
     pub scheme: &'static str,
     /// Nombre del ejecutable en Linux (`/usr/bin/<bin>`).
@@ -57,7 +60,8 @@ pub const APPS: &[AppDef] = &[
     AppDef {
         id: AppId::Transcribe,
         name: "IureTranscribe",
-        description: "Transcribe audio y video localmente, graba reuniones y genera resúmenes y minutas.",
+        description_en: "Transcribes audio and video locally, records meetings and generates summaries and minutes.",
+        description_es: "Transcribe audio y video localmente, graba reuniones y genera resúmenes y minutas.",
         repo: "ellaguno/iuretranscribe",
         scheme: "iuretranscribe",
         linux_bin: "iuretranscribe",
@@ -67,7 +71,8 @@ pub const APPS: &[AppDef] = &[
     AppDef {
         id: AppId::Editor,
         name: "IureEditor",
-        description: "Editor Markdown con diagramas, fórmulas y exportación a PDF y DOCX.",
+        description_en: "Markdown editor with diagrams, formulas and export to PDF and DOCX.",
+        description_es: "Editor Markdown con diagramas, fórmulas y exportación a PDF y DOCX.",
         repo: "ellaguno/iureditor",
         scheme: "iureditor",
         linux_bin: "iureditor",
@@ -77,7 +82,8 @@ pub const APPS: &[AppDef] = &[
     AppDef {
         id: AppId::Dav,
         name: "IureDav",
-        description: "Monta los documentos de Iurefficient como una unidad de tu equipo.",
+        description_en: "Mounts your Iurefficient documents as a drive on your computer.",
+        description_es: "Monta los documentos de Iurefficient como una unidad de tu equipo.",
         repo: "ellaguno/iuredav",
         scheme: "iuredav",
         linux_bin: "iuredav-app",
@@ -87,7 +93,8 @@ pub const APPS: &[AppDef] = &[
     AppDef {
         id: AppId::Ocr,
         name: "IureOCR",
-        description: "Reconoce el texto de escaneos y fotos en tu equipo y deja PDF buscables listos para Iurefficient.",
+        description_en: "Recognizes text in scans and photos on your computer and produces searchable PDFs ready for Iurefficient.",
+        description_es: "Reconoce el texto de escaneos y fotos en tu equipo y deja PDF buscables listos para Iurefficient.",
         repo: "ellaguno/iureocr",
         scheme: "iureocr",
         linux_bin: "iureocr",
@@ -96,11 +103,18 @@ pub const APPS: &[AppDef] = &[
     },
 ];
 
+impl AppDef {
+    /// Descripción en el idioma actual ([`lang::current`]).
+    pub fn description(&self) -> &'static str {
+        lang::pick(self.description_en, self.description_es)
+    }
+}
+
 pub fn def(id: AppId) -> &'static AppDef {
     APPS.iter().find(|a| a.id == id).expect("catálogo completo")
 }
 
-/// Estado de una app en este equipo.
+/// Estado de una app en este equipo. `description` sale en el idioma actual.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppStatus {
@@ -169,7 +183,7 @@ pub fn installed() -> Vec<AppStatus> {
             AppStatus {
                 id: a.id,
                 name: a.name,
-                description: a.description,
+                description: a.description(),
                 installed: path.is_some(),
                 path: path.map(|p| p.to_string_lossy().into_owned()),
                 download_url: download_url(a),
@@ -193,19 +207,19 @@ pub async fn status(user_agent: &str) -> Vec<AppStatus> {
 /// instalada, devuelve error con la URL de descarga en el mensaje.
 pub fn launch(id: AppId, args: &[String]) -> Result<()> {
     let app = def(id);
-    let path = locate(app).ok_or_else(|| anyhow!("{} no está instalada. Descárgala en {}", app.name, download_url(app)))?;
+    let path = locate(app).ok_or_else(|| anyhow!(tr!("{} is not installed. Download it from {}", "{} no está instalada. Descárgala en {}", app.name, download_url(app))))?;
     if cfg!(target_os = "macos") {
         let mut c = Command::new("open");
         c.arg("-a").arg(&path);
         if !args.is_empty() {
             c.arg("--args").args(args);
         }
-        c.spawn().with_context(|| format!("no se pudo abrir {}", app.name))?;
+        c.spawn().with_context(|| tr!("could not open {}", "no se pudo abrir {}", app.name))?;
     } else {
         Command::new(&path)
             .args(args)
             .spawn()
-            .with_context(|| format!("no se pudo abrir {}", app.name))?;
+            .with_context(|| tr!("could not open {}", "no se pudo abrir {}", app.name))?;
     }
     Ok(())
 }

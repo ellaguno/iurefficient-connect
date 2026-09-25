@@ -1,63 +1,78 @@
+[Leer en español](README.es.md)
+
 # iurefficient-connect
 
-Conector común, en Rust, de las aplicaciones de escritorio de Iurefficient
+Shared Rust connector between the Iurefficient desktop apps
 ([IureTranscribe](https://github.com/ellaguno/iuretranscribe),
-[IureEditor](https://github.com/ellaguno/iureditor), [IureDav](https://github.com/ellaguno/iuredav))
-con una instancia de [Iurefficient](https://iurefficient.com). Sin dependencias de
-Tauri ni de ninguna interfaz: cada app pone su propia pantalla encima.
+[IureEditor](https://github.com/ellaguno/iureditor), [IureDav](https://github.com/ellaguno/iuredav),
+[IureOCR](https://github.com/ellaguno/iureocr))
+and an [Iurefficient](https://iurefficient.com) instance. No dependency on Tauri or
+any UI: each app puts its own screens on top.
 
-| Módulo | Qué hace | Credencial |
+| Module | What it does | Credential |
 | --- | --- | --- |
-| `account` | Normaliza el dominio (`2.ds.iurefficient.com` → `https://2.ds.iurefficient.com/`) e identifica al usuario | — |
-| `secrets` | Guarda y lee credenciales en el llavero del sistema, **compartidas entre las apps** (Secret Service, Llaveros de macOS, Administrador de credenciales de Windows) | — |
-| `webdav` | Árbol de documentos: listar carpetas con permisos, subir (con progreso, reintento como `.txt` si la instancia rechaza `.srt`/`.vtt`), descargar | contraseña de aplicación `iurdav_…` |
-| `mcp` | Servidor MCP de sólo lectura: `listar_proyectos`, `buscar_en_expedientes`, `detalle_proyecto`, … | token `iurmcp_…` |
-| `rest` | API REST con sesión de cookies (JWT + CSRF), inicio de sesión con TOTP opcional, refresco automático del acceso, sesión exportable al llavero | correo y contraseña |
-| `api` | Operaciones tipadas sobre la sesión REST: proyectos (`cases`), documentos (subir, listar, descargar), minutas por blueprint (`ai_options`, `compose`, `compose_status`), compromisos → tareas, horas (`add_time_entry`), CRM (leads, oportunidades, adjuntos, actividades), chat con IA (`global_chat`) y **contraseñas de aplicación WebDAV** (`create_webdav_token`: la app inicia sesión con la cuenta y crea la `iurdav_…` sin que el usuario la vea) | sesión REST |
-| `releases` | Aviso de versiones nuevas publicadas en GitHub | — |
-| `apps` | Catálogo de las tres apps: detecta cuáles están instaladas (Linux, Windows, macOS), las lanza con argumentos («Abrir con IureEditor») y consulta su última versión | — |
+| `account` | Normalizes the domain (`2.ds.iurefficient.com` → `https://2.ds.iurefficient.com/`) and identifies the user | — |
+| `secrets` | Stores and reads credentials in the system keyring, **shared between the apps** (Secret Service, macOS Keychain, Windows Credential Manager) | — |
+| `webdav` | Document tree: list folders with permissions, upload (with progress, retrying as `.txt` if the instance rejects `.srt`/`.vtt`), download | app password `iurdav_…` |
+| `mcp` | Read-only MCP server: `listar_proyectos`, `buscar_en_expedientes`, `detalle_proyecto`, … | token `iurmcp_…` |
+| `rest` | REST API with a cookie session (JWT + CSRF), sign-in with optional TOTP, automatic access refresh, session exportable to the keyring | email and password |
+| `api` | Typed operations over the REST session: projects (`cases`), documents (upload, list, download), minutes by blueprint (`ai_options`, `compose`, `compose_status`), commitments → tasks, hours (`add_time_entry`), CRM (leads, opportunities, attachments, activities), AI chat (`global_chat`) and **WebDAV app passwords** (`create_webdav_token`: the app signs in with the account and creates the `iurdav_…` password without the user seeing it) | REST session |
+| `releases` | Notice of new versions published on GitHub | — |
+| `lang` | UI language shared by the apps: English by default, Spanish when the OS is in Spanish; every connector message (and the app descriptions in `apps`) comes out in that language. `tr!(english, spanish, …)` macro for the apps' own texts | — |
+| `apps` | Catalog of the four apps: detects which are installed (Linux, Windows, macOS), launches them with arguments ("Open with IureEditor") and checks their latest version | — |
 
-## Uso
+## Usage
 
 ```rust
 use iurefficient_connect::{Account, webdav::WebDav, user_agent};
 
-let acc = Account::new("2.ds.iurefficient.com", "yo@despacho.com")?;
-let dav = WebDav::new(acc.clone(), "iurdav_…", &user_agent("MiApp", "1.0.0"))?;
-let raiz = dav.list("").await?;                       // Clientes, General, Vistas (solo navegar)
-let subido = dav.upload_with_fallback("Clientes/Acme/Proyecto 1", path, |enviado, total| {}).await?;
+let acc = Account::new("2.ds.iurefficient.com", "me@firm.com")?;
+let dav = WebDav::new(acc.clone(), "iurdav_…", &user_agent("MyApp", "1.0.0"))?;
+let root = dav.list("").await?;                       // Clientes, General, Vistas (solo navegar)
+let uploaded = dav.upload_with_fallback("Clientes/Acme/Proyecto 1", path, |sent, total| {}).await?;
 ```
 
 ```rust
 use iurefficient_connect::rest::{Session, Login};
 
-let s = Session::new(acc, &user_agent("MiApp", "1.0.0"))?;
-match s.login("contraseña").await? {
-    Login::Ok(user) => { /* sesión abierta */ }
+let s = Session::new(acc, &user_agent("MyApp", "1.0.0"))?;
+match s.login("password").await? {
+    Login::Ok(user) => { /* session open */ }
     Login::TotpRequired { totp_token } => { s.verify_totp(&totp_token, "123456").await?; }
 }
 secrets::guardar(&acc, secrets::Kind::Session, &serde_json::to_string(&s.export())?)?;
 ```
 
-## Reglas del servidor que el conector respeta
+```rust
+use iurefficient_connect::{lang, tr};
 
-- `PUT` a una ruta nueva crea un documento (201); a una existente, una versión (204).
-- `DELETE`, `MOVE`, `COPY` y `MKCOL` devuelven 405 por diseño: el ciclo de vida lo gobierna la aplicación.
-- `Vistas (solo navegar)/` no admite escrituras.
-- Las instancias no admiten `.srt`/`.vtt` por defecto; el conector reintenta como `.txt`.
-- El JWT vive en cookies httpOnly (acceso 1 h, refresco 30 días) con CSRF de doble envío.
+// At startup and whenever the setting ("auto", "en" or "es") changes:
+lang::set(lang::resolve(&settings.ui_language));
 
-## Pruebas
+// The app's own texts: English first, then Spanish.
+let msg = tr!("Uploaded {name}", "Se subió {name}");
+let label = lang::pick("Settings", "Ajustes");
+```
+
+## Server rules the connector respects
+
+- `PUT` to a new path creates a document (201); to an existing one, a version (204).
+- `DELETE`, `MOVE`, `COPY` and `MKCOL` return 405 by design: the application governs the lifecycle.
+- `Vistas (solo navegar)/` does not accept writes.
+- Instances do not accept `.srt`/`.vtt` by default; the connector retries as `.txt`.
+- The JWT lives in httpOnly cookies (access 1 h, refresh 30 days) with double-submit CSRF.
+
+## Tests
 
 ```bash
 cargo test
-# Integración contra el doble de pruebas de IureDav (o una instancia real):
+# Integration against IureDav's test double (or a real instance):
 python3 ../iuredav/tests/servidor-falso.py 8099 &
 IURE_TEST_URL=http://127.0.0.1:8099 IURE_TEST_USER=prueba@ejemplo.com IURE_TEST_PASS=iurdav_falso cargo test -- integration --nocapture
 ```
 
-Sin el feature `keyring` (`--no-default-features`) el crate no necesita D-Bus en Linux.
+Without the `keyring` feature (`--no-default-features`) the crate does not need D-Bus on Linux.
 
-## Licencia
+## License
 
 MIT.

@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use url::Url;
 
+use crate::{lang, tr};
+
 /// Una instancia de Iurefficient y el usuario que la usa. Las credenciales
 /// (contraseña WebDAV, token MCP, sesión REST) viven aparte, en [`crate::secrets`].
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -20,25 +22,26 @@ impl Account {
     pub fn new(domain: &str, email: &str) -> Result<Self> {
         let d = domain.trim().trim_end_matches('/');
         if d.is_empty() {
-            return Err(anyhow!(
+            return Err(anyhow!(tr!(
+                "Enter your instance domain (e.g. 2.ds.iurefficient.com)",
                 "Indica el dominio de tu instancia (p. ej. 2.ds.iurefficient.com)"
-            ));
+            )));
         }
         let with_scheme = if d.contains("://") {
             d.to_string()
         } else {
             format!("https://{d}")
         };
-        let mut base = Url::parse(&with_scheme).map_err(|e| anyhow!("Dominio no válido: {e}"))?;
+        let mut base = Url::parse(&with_scheme).map_err(|e| anyhow!(tr!("Invalid domain: {e}", "Dominio no válido: {e}")))?;
         if base.host_str().is_none() {
-            return Err(anyhow!("Dominio no válido"));
+            return Err(anyhow!(lang::pick("Invalid domain", "Dominio no válido")));
         }
         base.set_path("/");
         base.set_query(None);
         base.set_fragment(None);
         let email = email.trim().to_string();
         if email.is_empty() {
-            return Err(anyhow!("Falta el correo del usuario"));
+            return Err(anyhow!(lang::pick("The user email is missing", "Falta el correo del usuario")));
         }
         Ok(Self { base, email })
     }
@@ -111,7 +114,7 @@ pub fn active() -> Option<ActiveAccount> {
 
 /// Deja `acc` como cuenta activa para las demás apps. Se llama al iniciar sesión.
 pub fn set_active(acc: &Account, app: &str) -> Result<()> {
-    let path = active_path().ok_or_else(|| anyhow!("no hay carpeta de configuración"))?;
+    let path = active_path().ok_or_else(|| anyhow!(lang::pick("no configuration folder", "no hay carpeta de configuración")))?;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }

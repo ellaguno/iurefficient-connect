@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use crate::rest::Session;
+use crate::{lang, tr};
 
 fn s(v: &Value, k: &str) -> String {
     v.get(k).and_then(|x| x.as_str()).unwrap_or_default().to_string()
@@ -126,7 +127,7 @@ pub struct UploadOptions {
 /// Sube un archivo como documento (`POST /api/documents`, multipart). La instancia
 /// valida la extensión (`.srt`/`.vtt` no se admiten por defecto: usa [`crate::webdav::fallback_name`]).
 pub async fn upload_document(sess: &Session, local: &Path, opts: &UploadOptions) -> Result<Document> {
-    let bytes = tokio::fs::read(local).await.with_context(|| format!("No se pudo leer {}", local.display()))?;
+    let bytes = tokio::fs::read(local).await.with_context(|| tr!("Could not read {}", "No se pudo leer {}", local.display()))?;
     let name = opts.file_name.clone().or_else(|| local.file_name().map(|n| n.to_string_lossy().into_owned())).unwrap_or_else(|| "archivo".into());
     let mut form = Form::new().part("file", Part::bytes(bytes).file_name(name));
     if let Some(c) = &opts.case_id { form = form.text("case_id", c.clone()); }
@@ -137,7 +138,7 @@ pub async fn upload_document(sess: &Session, local: &Path, opts: &UploadOptions)
     if !opts.tags.is_empty() { form = form.text("tags", serde_json::to_string(&opts.tags)?); }
     if let Some(v) = &opts.as_version_of { form = form.text("as_version_of", v.clone()); }
     let v = sess.post_multipart("/api/documents", form).await.map_err(map_upload_error)?;
-    let d = v.get("document").ok_or_else(|| anyhow!("La instancia no devolvió el documento"))?;
+    let d = v.get("document").ok_or_else(|| anyhow!(lang::pick("The instance did not return the document", "La instancia no devolvió el documento")))?;
     let mut doc = document_from(d);
     doc.is_version = v.get("is_version").and_then(|b| b.as_bool()).unwrap_or(false);
     Ok(doc)
@@ -146,9 +147,9 @@ pub async fn upload_document(sess: &Session, local: &Path, opts: &UploadOptions)
 fn map_upload_error(e: anyhow::Error) -> anyhow::Error {
     let m = e.to_string();
     if m.contains("File type not allowed") {
-        anyhow!("La instancia no admite ese tipo de archivo")
+        anyhow!(lang::pick("The instance does not accept that file type", "La instancia no admite ese tipo de archivo"))
     } else if m.contains("quota") || m.contains("cuota") {
-        anyhow!("Se alcanzó la cuota de almacenamiento del plan")
+        anyhow!(lang::pick("The plan's storage quota has been reached", "Se alcanzó la cuota de almacenamiento del plan"))
     } else {
         e
     }
@@ -169,7 +170,7 @@ pub struct DocumentInfo {
 /// `GET /api/documents/<id>`: metadatos del documento (nombre real de archivo, tipo MIME…).
 pub async fn document(sess: &Session, doc_id: &str) -> Result<DocumentInfo> {
     let v = sess.get_json(&format!("/api/documents/{doc_id}")).await?;
-    let d = v.get("document").ok_or_else(|| anyhow!("La instancia no devolvió el documento"))?;
+    let d = v.get("document").ok_or_else(|| anyhow!(lang::pick("The instance did not return the document", "La instancia no devolvió el documento")))?;
     Ok(DocumentInfo {
         id: s(d, "id"),
         title: s(d, "title"),
@@ -192,7 +193,7 @@ pub async fn download_document(sess: &Session, doc_id: &str, local: &Path) -> Re
     let rb = sess.request(reqwest::Method::GET, &format!("/api/documents/{doc_id}/download?download=true")).await?;
     let resp = rb.send().await?;
     if !resp.status().is_success() {
-        return Err(anyhow!("No se pudo descargar el documento ({})", resp.status()));
+        return Err(anyhow!(tr!("Could not download the document ({})", "No se pudo descargar el documento ({})", resp.status())));
     }
     let bytes = resp.bytes().await?;
     tokio::fs::write(local, &bytes).await?;
@@ -272,14 +273,14 @@ pub async fn compose(sess: &Session, blueprint_id: &str, req: &ComposeRequest) -
     let v = sess.post_json(&format!("/api/blueprints/{blueprint_id}/compose"), &body).await.map_err(|e| {
         let m = e.to_string();
         if m.contains("ALREADY_COMPOSING") || m.contains("Ya se está generando") {
-            anyhow!("Ya se está generando un documento a partir de ese material; espera a que termine")
+            anyhow!(lang::pick("A document is already being generated from that material; wait for it to finish", "Ya se está generando un documento a partir de ese material; espera a que termine"))
         } else if m.contains("SOURCE_WITHOUT_TEXT") {
-            anyhow!("El documento fuente no tiene texto legible todavía")
+            anyhow!(lang::pick("The source document has no readable text yet", "El documento fuente no tiene texto legible todavía"))
         } else {
             e
         }
     })?;
-    v.get("task_id").and_then(|t| t.as_str()).map(str::to_string).ok_or_else(|| anyhow!("La instancia no devolvió task_id"))
+    v.get("task_id").and_then(|t| t.as_str()).map(str::to_string).ok_or_else(|| anyhow!(lang::pick("The instance did not return a task_id", "La instancia no devolvió task_id")))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -400,14 +401,14 @@ pub async fn create_webdav_token(sess: &Session, name: &str, ttl_days: Option<u3
     let body = json!({"name": name, "ttl_days": ttl_days.map(|d| d as i64).unwrap_or(0)});
     let v = sess.post_json("/api/system/webdav/tokens", &body).await.map_err(|e| {
         if e.to_string().contains("Demasiados tokens") {
-            anyhow!("Ya tienes 20 contraseñas de aplicación activas en la instancia; revoca alguna desde tu perfil")
+            anyhow!(lang::pick("You already have 20 active app passwords on the instance; revoke one from your profile", "Ya tienes 20 contraseñas de aplicación activas en la instancia; revoca alguna desde tu perfil"))
         } else {
             e
         }
     })?;
     let secret = s(&v, "secret");
     if secret.is_empty() {
-        return Err(anyhow!("La instancia no devolvió la contraseña de aplicación"));
+        return Err(anyhow!(lang::pick("The instance did not return the app password", "La instancia no devolvió la contraseña de aplicación")));
     }
     Ok(NewWebDavToken { info: webdav_token_from(&v["token"]), secret, username: opt(&v, "username").unwrap_or_else(|| sess.account().email.clone()) })
 }
@@ -417,7 +418,7 @@ pub async fn revoke_webdav_token(sess: &Session, token_id: &str) -> Result<()> {
     let rb = sess.request(reqwest::Method::DELETE, &format!("/api/system/webdav/tokens/{token_id}")).await?;
     let resp = rb.send().await?;
     if !resp.status().is_success() {
-        return Err(anyhow!("No se pudo revocar la contraseña de aplicación ({})", resp.status()));
+        return Err(anyhow!(tr!("Could not revoke the app password ({})", "No se pudo revocar la contraseña de aplicación ({})", resp.status())));
     }
     Ok(())
 }
@@ -436,14 +437,14 @@ pub async fn global_chat(sess: &Session, message: &str, system_prompt: Option<&s
     }
     let v = sess.post_json("/api/chat/global/chat", &body).await.map_err(|e| {
         if e.to_string().contains("quota_exceeded") || e.to_string().contains("403") {
-            anyhow!("Se alcanzó la cuota de IA del plan en la instancia")
+            anyhow!(lang::pick("The plan's AI quota on the instance has been reached", "Se alcanzó la cuota de IA del plan en la instancia"))
         } else {
             e
         }
     })?;
     let content = v["assistant_message"]["content"].as_str().unwrap_or_default().trim().to_string();
     if content.is_empty() {
-        return Err(anyhow!("La instancia no devolvió respuesta"));
+        return Err(anyhow!(lang::pick("The instance returned no response", "La instancia no devolvió respuesta")));
     }
     Ok(content)
 }
@@ -457,7 +458,7 @@ pub async fn add_time_entry(sess: &Session, case_id: &str, hours: f64, descripti
     let mut body = json!({"hours": hours, "description": description, "billable": billable});
     if let Some(d) = entry_date { body["entry_date"] = json!(d); }
     let v = sess.post_json(&format!("/api/cases/{case_id}/time-entries"), &body).await.map_err(|e| {
-        if e.to_string().contains("409") { anyhow!("Esa semana ya fue enviada y no admite horas nuevas") } else { e }
+        if e.to_string().contains("409") { anyhow!(lang::pick("That week has already been submitted and does not accept new hours", "Esa semana ya fue enviada y no admite horas nuevas")) } else { e }
     })?;
     Ok(s(&v["time_entry"], "id"))
 }
@@ -535,7 +536,7 @@ pub async fn crm_list(sess: &Session, kind: CrmKind, search: Option<&str>, limit
 
 /// Adjunta un archivo a un lead u oportunidad (`POST …/<id>/documents`, multipart `file`).
 pub async fn crm_attach_file(sess: &Session, kind: CrmKind, id: &str, local: &Path, file_name: Option<&str>) -> Result<Document> {
-    let bytes = tokio::fs::read(local).await.with_context(|| format!("No se pudo leer {}", local.display()))?;
+    let bytes = tokio::fs::read(local).await.with_context(|| tr!("Could not read {}", "No se pudo leer {}", local.display()))?;
     let name = file_name.map(str::to_string).or_else(|| local.file_name().map(|n| n.to_string_lossy().into_owned())).unwrap_or_else(|| "archivo".into());
     let form = Form::new().part("file", Part::bytes(bytes).file_name(name));
     let v = sess.post_multipart(&format!("/api/plugins/crm/{}/{id}/documents", kind.segment()), form).await.map_err(map_upload_error)?;
