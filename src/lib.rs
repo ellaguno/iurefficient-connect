@@ -5,20 +5,24 @@
 //!   cuenta activa compartida (qué instancia y correo usó la última app que inició sesión).
 //! - [`secrets`]: credenciales en el llavero del sistema, compartidas entre apps.
 //! - [`webdav`]: árbol de documentos (listar, subir, descargar) con contraseña `iurdav_…`.
-//! - [`mcp`]: servidor MCP de sólo lectura con token `iurmcp_…`.
+//! - [`mcp`]: cliente del servidor MCP de la instancia (sólo lectura, token `iurmcp_…`).
+//! - [`mcp_server`]: servidor MCP local por stdio (`<App> --mcp`); cada app pone sus herramientas.
 //! - [`rest`]: API REST con sesión de cookies (JWT + CSRF + refresco).
 //! - [`api`]: operaciones tipadas: proyectos, documentos, minutas por blueprint, CRM, horas.
 //! - [`releases`]: aviso de versiones nuevas publicadas en GitHub.
 //! - [`lang`]: idioma de la interfaz (inglés por defecto, español si el sistema lo está).
 //! - [`apps`]: catálogo de las apps de escritorio: detección, lanzamiento y última versión.
+//! - [`agents`]: registrar el servidor MCP local de una app en Claude Desktop y VS Code.
 //!
 //! Sin dependencias de Tauri ni de ninguna interfaz: cada app pone su propia UI encima.
 
 pub mod account;
+pub mod agents;
 pub mod api;
 pub mod apps;
 pub mod lang;
 pub mod mcp;
+pub mod mcp_server;
 pub mod releases;
 pub mod rest;
 #[cfg(feature = "keyring")]

@@ -1,6 +1,6 @@
 [package]
 name = "iurefficient-connect"
-version = "0.6.0"
+version = "0.7.0"
 edition = "2021"
 rust-version = "1.80"
 license = "MIT"
@@ -14,7 +14,9 @@ categories = ["api-bindings"]
 anyhow = "1"
 thiserror = "2"
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# `preserve_order`: al escribir la configuración de un asistente (Claude Desktop) se
+# conserva el orden de las claves del usuario.
+serde_json = { version = "1", features = ["preserve_order"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream", "cookies", "multipart"] }
 tokio = { version = "1", features = ["fs", "io-util", "sync", "time"] }
 futures-util = "0.3"

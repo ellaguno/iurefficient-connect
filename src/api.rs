@@ -424,6 +424,101 @@ pub async fn revoke_webdav_token(sess: &Session, token_id: &str) -> Result<()> {
 }
 
 // ---------------------------------------------------------------------------
+// Tokens de agente (servidor MCP de la instancia)
+// ---------------------------------------------------------------------------
+
+/// Token `iurmcp_…` con el que un agente externo (Microsoft 365 Copilot, Copilot Studio,
+/// Claude…) consulta la instancia por MCP, con los permisos de su dueño.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpTokenInfo {
+    pub id: String,
+    pub name: String,
+    pub token_prefix: Option<String>,
+    pub is_valid: bool,
+    pub created_at: Option<String>,
+    pub expires_at: Option<String>,
+    pub last_used_at: Option<String>,
+    pub call_count: u64,
+}
+
+fn mcp_token_from(v: &Value) -> McpTokenInfo {
+    McpTokenInfo {
+        id: s(v, "id"),
+        name: s(v, "name"),
+        token_prefix: opt(v, "token_prefix"),
+        is_valid: v["is_valid"].as_bool().unwrap_or(false),
+        created_at: opt(v, "created_at"),
+        expires_at: opt(v, "expires_at"),
+        last_used_at: opt(v, "last_used_at"),
+        call_count: v["call_count"].as_u64().unwrap_or(0),
+    }
+}
+
+/// Lo que devuelve `GET /api/mcp-tokens`: los tokens del usuario (sin secretos) y la URL
+/// del servidor MCP que hay que pegar en el agente.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpTokens {
+    pub endpoint_url: String,
+    pub tokens: Vec<McpTokenInfo>,
+}
+
+/// Una instancia anterior al servidor MCP contesta 404 en `/api/mcp-tokens`.
+fn map_mcp_error(e: anyhow::Error) -> anyhow::Error {
+    if e.to_string().starts_with("404") {
+        anyhow!(lang::pick(
+            "This Iurefficient instance does not have the MCP server for agents yet; it needs to be updated",
+            "Esta instancia de Iurefficient todavía no tiene el servidor MCP para agentes; hay que actualizarla"
+        ))
+    } else {
+        e
+    }
+}
+
+/// `GET /api/mcp-tokens`. La URL del servidor la da la instancia (su URL pública); si no
+/// la da completa, se arma con el dominio de la cuenta.
+pub async fn list_mcp_tokens(sess: &Session) -> Result<McpTokens> {
+    let v = sess.get_json("/api/mcp-tokens").await.map_err(map_mcp_error)?;
+    let endpoint = s(&v, "endpoint_url");
+    let endpoint_url = if endpoint.starts_with("http") { endpoint } else { sess.account().api("/api/mcp")?.to_string() };
+    Ok(McpTokens {
+        endpoint_url,
+        tokens: v["tokens"].as_array().map(|a| a.iter().map(mcp_token_from).collect()).unwrap_or_default(),
+    })
+}
+
+/// Token de agente recién creado: el secreto se muestra una sola vez.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NewMcpToken {
+    pub info: McpTokenInfo,
+    pub secret: String,
+}
+
+/// `POST /api/mcp-tokens`: crea un token `iurmcp_…` a nombre del usuario de la sesión.
+/// `ttl_days = None` → sin caducidad.
+pub async fn create_mcp_token(sess: &Session, name: &str, ttl_days: Option<u32>) -> Result<NewMcpToken> {
+    let body = json!({"name": name, "ttl_days": ttl_days.map(|d| d as i64).unwrap_or(0)});
+    let v = sess.post_json("/api/mcp-tokens", &body).await.map_err(map_mcp_error)?;
+    let secret = s(&v, "token");
+    if !secret.starts_with("iurmcp_") {
+        return Err(anyhow!(lang::pick("The instance did not return the agent token", "La instancia no devolvió el token de agente")));
+    }
+    Ok(NewMcpToken { info: mcp_token_from(&v), secret })
+}
+
+/// `DELETE /api/mcp-tokens/<id>` (se revoca; la instancia conserva el rastro).
+pub async fn revoke_mcp_token(sess: &Session, token_id: &str) -> Result<()> {
+    let rb = sess.request(reqwest::Method::DELETE, &format!("/api/mcp-tokens/{token_id}")).await?;
+    let resp = rb.send().await?;
+    if !resp.status().is_success() {
+        return Err(anyhow!(tr!("Could not revoke the agent token ({})", "No se pudo revocar el token de agente ({})", resp.status())));
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // Chat con IA sobre documentos
 // ---------------------------------------------------------------------------
 
