@@ -77,4 +77,4 @@ Sin el feature `keyring` (`--no-default-features`) el crate no necesita D-Bus en
 
 ## Licencia
 
-MIT.
+Apache License 2.0 — ver [LICENSE](LICENSE).

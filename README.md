@@ -77,4 +77,4 @@ Without the `keyring` feature (`--no-default-features`) the crate does not need 
 
 ## License
 
-MIT.
+Apache License 2.0 — see [LICENSE](LICENSE).
