@@ -71,7 +71,7 @@ impl Account {
 
 /// Qué instancia y qué correo usó la última app que inició sesión en este equipo.
 ///
-/// Es lo que permite que, tras conectar IureDav, IureTranscribe e IureEditor
+/// Es lo que permite que, tras conectar IureDav, IureTranscribe e iureditor
 /// arranquen ya conectados: con esto saben qué entrada del llavero buscar. No es
 /// un secreto (las credenciales van al llavero), por eso vive en un archivo
 /// legible: `<config>/iurefficient/cuenta-activa.json`.
@@ -80,7 +80,7 @@ pub struct ActiveAccount {
     /// `host[:puerto]` de la instancia, como lo devuelve [`Account::host`].
     pub domain: String,
     pub email: String,
-    /// App que la escribió (`IureDav`, `IureTranscribe`, `IureEditor`).
+    /// App que la escribió (`IureDav`, `IureTranscribe`, `iureditor`).
     #[serde(default)]
     pub app: String,
     /// Segundos desde la época Unix.

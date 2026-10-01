@@ -4,7 +4,7 @@
 
 Shared Rust connector between the Iurefficient desktop apps
 ([IureTranscribe](https://github.com/ellaguno/iuretranscribe),
-[IureEditor](https://github.com/ellaguno/iureditor), [IureDav](https://github.com/ellaguno/iuredav),
+[iureditor](https://github.com/ellaguno/iureditor), [IureDav](https://github.com/ellaguno/iuredav),
 [IureOCR](https://github.com/ellaguno/iureocr))
 and an [Iurefficient](https://iurefficient.com) instance. No dependency on Tauri or
 any UI: each app puts its own screens on top.
@@ -21,7 +21,7 @@ any UI: each app puts its own screens on top.
 | `agents` | Register an app's local MCP server (`<App> --mcp`) in Claude Desktop (writes `claude_desktop_config.json` without touching the rest) and VS Code (`vscode:mcp/install` link), and tell whether it is already connected | — |
 | `releases` | Notice of new versions published on GitHub | — |
 | `lang` | UI language shared by the apps: English by default, Spanish when the OS is in Spanish; every connector message (and the app descriptions in `apps`) comes out in that language. `tr!(english, spanish, …)` macro for the apps' own texts | — |
-| `apps` | Catalog of the four apps: detects which are installed (Linux, Windows, macOS), launches them with arguments ("Open with IureEditor") and checks their latest version | — |
+| `apps` | Catalog of the desktop apps: detects which are installed (Linux, Windows, macOS), launches them with arguments ("Open with iureditor") and checks their latest version | — |
 
 ## Usage
 

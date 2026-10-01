@@ -1,7 +1,7 @@
 //! Catálogo de las aplicaciones de escritorio de Iurefficient: detección de las
 //! instaladas en este equipo, lanzamiento con argumentos y consulta de la última
 //! versión publicada. Sirve para el panel «Apps de Iurefficient» de cada app y para
-//! «Abrir con IureEditor», «Transcribir con IureTranscribe», etc.
+//! «Abrir con iureditor», «Transcribir con IureTranscribe», etc.
 
 use anyhow::{anyhow, Context, Result};
 use serde::Serialize;
@@ -70,7 +70,7 @@ pub const APPS: &[AppDef] = &[
     },
     AppDef {
         id: AppId::Editor,
-        name: "IureEditor",
+        name: "iureditor",
         description_en: "Markdown editor with diagrams, formulas and export to PDF and DOCX.",
         description_es: "Editor Markdown con diagramas, fórmulas y exportación a PDF y DOCX.",
         repo: "ellaguno/iureditor",

@@ -1,5 +1,5 @@
 //! Conector común de las aplicaciones de escritorio de Iurefficient
-//! (IureTranscribe, IureEditor, IureDav, IureOCR) con una instancia.
+//! (IureTranscribe, iureditor, IureDav, IureOCR) con una instancia.
 //!
 //! - [`account`]: identidad de la instancia (dominio normalizado) y del usuario, y la
 //!   cuenta activa compartida (qué instancia y correo usó la última app que inició sesión).

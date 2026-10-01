@@ -4,7 +4,7 @@
 
 Conector común, en Rust, de las aplicaciones de escritorio de Iurefficient
 ([IureTranscribe](https://github.com/ellaguno/iuretranscribe),
-[IureEditor](https://github.com/ellaguno/iureditor), [IureDav](https://github.com/ellaguno/iuredav),
+[iureditor](https://github.com/ellaguno/iureditor), [IureDav](https://github.com/ellaguno/iuredav),
 [IureOCR](https://github.com/ellaguno/iureocr))
 con una instancia de [Iurefficient](https://iurefficient.com). Sin dependencias de
 Tauri ni de ninguna interfaz: cada app pone su propia pantalla encima.
@@ -21,7 +21,7 @@ Tauri ni de ninguna interfaz: cada app pone su propia pantalla encima.
 | `agents` | Registrar el servidor MCP local de una app (`<App> --mcp`) en Claude Desktop (escribe `claude_desktop_config.json` sin tocar el resto) y en VS Code (enlace `vscode:mcp/install`), y saber si ya está conectado | — |
 | `releases` | Aviso de versiones nuevas publicadas en GitHub | — |
 | `lang` | Idioma de la interfaz compartido por las apps: inglés por defecto, español si el sistema está en español; todos los mensajes del conector (y la descripción de las apps en `apps`) salen en ese idioma. Macro `tr!(inglés, español, …)` para los textos de las apps | — |
-| `apps` | Catálogo de las cuatro apps: detecta cuáles están instaladas (Linux, Windows, macOS), las lanza con argumentos («Abrir con IureEditor») y consulta su última versión | — |
+| `apps` | Catálogo de las apps de escritorio: detecta cuáles están instaladas (Linux, Windows, macOS), las lanza con argumentos («Abrir con iureditor») y consulta su última versión | — |
 
 ## Uso
 
