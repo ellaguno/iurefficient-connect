@@ -12,10 +12,10 @@ use std::path::Path;
 use crate::rest::Session;
 use crate::{lang, tr};
 
-fn s(v: &Value, k: &str) -> String {
+pub(crate) fn s(v: &Value, k: &str) -> String {
     v.get(k).and_then(|x| x.as_str()).unwrap_or_default().to_string()
 }
-fn opt(v: &Value, k: &str) -> Option<String> {
+pub(crate) fn opt(v: &Value, k: &str) -> Option<String> {
     v.get(k).and_then(|x| x.as_str()).map(str::to_string)
 }
 
@@ -80,7 +80,7 @@ pub async fn cases(sess: &Session, search: Option<&str>, limit: u32) -> Result<V
     Ok(v.get("cases").and_then(|c| c.as_array()).map(|a| a.iter().map(case_from).collect()).unwrap_or_default())
 }
 
-fn urlencode(q: &str) -> String {
+pub(crate) fn urlencode(q: &str) -> String {
     url::form_urlencoded::byte_serialize(q.as_bytes()).collect()
 }
 
@@ -96,7 +96,7 @@ pub struct Document {
     pub is_version: bool,
 }
 
-fn document_from(v: &Value) -> Document {
+pub(crate) fn document_from(v: &Value) -> Document {
     Document {
         id: s(v, "id"),
         title: s(v, "title"),
@@ -576,7 +576,7 @@ pub enum CrmKind {
 }
 
 impl CrmKind {
-    fn segment(self) -> &'static str {
+    pub(crate) fn segment(self) -> &'static str {
         match self {
             CrmKind::Lead => "leads",
             CrmKind::Opportunity => "opportunities",

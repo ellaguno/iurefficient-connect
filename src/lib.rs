@@ -9,6 +9,8 @@
 //! - [`mcp_server`]: servidor MCP local por stdio (`<App> --mcp`); cada app pone sus herramientas.
 //! - [`rest`]: API REST con sesión de cookies (JWT + CSRF + refresco).
 //! - [`api`]: operaciones tipadas: proyectos, documentos, minutas por blueprint, CRM, horas.
+//! - [`pim`]: agenda, contactos y clientes, tareas, avisos, comentarios, tickets, correo del
+//!   CRM y ayudas de IA (lo que usa IureDesk).
 //! - [`releases`]: aviso de versiones nuevas publicadas en GitHub.
 //! - [`lang`]: idioma de la interfaz (inglés por defecto, español si el sistema lo está).
 //! - [`apps`]: catálogo de las apps de escritorio: detección, lanzamiento y última versión.
@@ -23,6 +25,7 @@ pub mod apps;
 pub mod lang;
 pub mod mcp;
 pub mod mcp_server;
+pub mod pim;
 pub mod releases;
 pub mod rest;
 #[cfg(feature = "keyring")]

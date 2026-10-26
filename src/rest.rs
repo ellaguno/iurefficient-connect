@@ -393,6 +393,18 @@ impl Session {
             .await?;
         json_or_error(resp).await
     }
+
+    /// PUT con cuerpo JSON.
+    pub async fn put_json(&self, path: &str, body: &Value) -> Result<Value> {
+        let resp = self.send_retrying(Method::PUT, path, Some(body)).await?;
+        json_or_error(resp).await
+    }
+
+    /// DELETE; devuelve el JSON de la respuesta (`null` si viene vacía).
+    pub async fn delete_json(&self, path: &str) -> Result<Value> {
+        let resp = self.send_retrying(Method::DELETE, path, None).await?;
+        json_or_error(resp).await
+    }
 }
 
 fn user_from(body: &Value) -> Option<User> {
