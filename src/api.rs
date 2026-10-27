@@ -671,6 +671,7 @@ pub async fn crm_attach_document(sess: &Session, kind: CrmKind, id: &str, docume
 
 /// Registra una actividad completada (`POST /api/plugins/crm/activities`).
 /// `activity_type`: call | meeting | email | whatsapp | sms | note | task.
+#[allow(clippy::too_many_arguments)]
 pub async fn crm_activity(
     sess: &Session,
     kind: CrmKind,

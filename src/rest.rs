@@ -93,6 +93,7 @@ impl Session {
         self.shared.store(on, std::sync::atomic::Ordering::Relaxed);
     }
 
+    #[cfg_attr(not(feature = "keyring"), allow(dead_code))]
     fn is_shared(&self) -> bool {
         cfg!(feature = "keyring") && self.shared.load(std::sync::atomic::Ordering::Relaxed)
     }
@@ -428,6 +429,19 @@ pub struct ApiError {
 }
 
 impl ApiError {
+    /// Error con estado, código y mensaje (pruebas y adaptadores).
+    pub fn new(status: u16, code: Option<&str>, message: &str) -> Self {
+        let status_line = StatusCode::from_u16(status)
+            .map(|s| s.to_string())
+            .unwrap_or_else(|_| status.to_string());
+        ApiError {
+            status,
+            code: code.map(str::to_string),
+            message: message.to_string(),
+            status_line,
+        }
+    }
+
     /// `true` si la instancia exige aceptar los términos vigentes (403
     /// `terms_acceptance_required`, desde v4.114): hay que abrir la web para aceptarlos.
     pub fn is_terms_required(&self) -> bool {
