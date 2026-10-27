@@ -144,6 +144,31 @@ pub async fn upload_document(sess: &Session, local: &Path, opts: &UploadOptions)
     Ok(doc)
 }
 
+/// Igual que [`upload_document`] con el contenido en memoria (`file_name` lleva la extensión,
+/// que la instancia valida: `.txt`, `.md`, `.pdf`…; `.eml` no se admite).
+pub async fn upload_document_bytes(sess: &Session, bytes: Vec<u8>, file_name: &str, opts: &UploadOptions) -> Result<Document> {
+    let mut form = Form::new().part("file", Part::bytes(bytes).file_name(file_name.to_string()));
+    if let Some(c) = &opts.case_id { form = form.text("case_id", c.clone()); }
+    if let Some(c) = &opts.client_id { form = form.text("client_id", c.clone()); }
+    if let Some(t) = &opts.title { form = form.text("title", t.clone()); }
+    if let Some(t) = &opts.document_type { form = form.text("document_type", t.clone()); }
+    if let Some(d) = &opts.description { form = form.text("description", d.clone()); }
+    if !opts.tags.is_empty() { form = form.text("tags", serde_json::to_string(&opts.tags)?); }
+    if let Some(v) = &opts.as_version_of { form = form.text("as_version_of", v.clone()); }
+    let v = sess.post_multipart("/api/documents", form).await.map_err(map_upload_error)?;
+    let d = v.get("document").ok_or_else(|| anyhow!(lang::pick("The instance did not return the document", "La instancia no devolvió el documento")))?;
+    let mut doc = document_from(d);
+    doc.is_version = v.get("is_version").and_then(|b| b.as_bool()).unwrap_or(false);
+    Ok(doc)
+}
+
+/// Igual que [`crm_attach_file`] con el contenido en memoria.
+pub async fn crm_attach_bytes(sess: &Session, kind: CrmKind, id: &str, bytes: Vec<u8>, file_name: &str) -> Result<Document> {
+    let form = Form::new().part("file", Part::bytes(bytes).file_name(file_name.to_string()));
+    let v = sess.post_multipart(&format!("/api/plugins/crm/{}/{id}/documents", kind.segment()), form).await.map_err(map_upload_error)?;
+    Ok(document_from(&v))
+}
+
 fn map_upload_error(e: anyhow::Error) -> anyhow::Error {
     let m = e.to_string();
     if m.contains("File type not allowed") {

@@ -412,20 +412,65 @@ fn user_from(body: &Value) -> Option<User> {
     serde_json::from_value(u).ok()
 }
 
+/// Respuesta de error de la instancia (estado HTTP ≠ 2xx), con el `code` del cuerpo si lo trae
+/// (`{"code": "terms_acceptance_required"}`, `{"error": {"code", "message"}}`…). Se puede
+/// recuperar de un `anyhow::Error` con `downcast_ref::<ApiError>()`. Se muestra como antes:
+/// `"<estado>: <mensaje>"`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApiError {
+    /// Estado HTTP (403, 404…).
+    pub status: u16,
+    /// Código de error de la instancia, si lo da.
+    pub code: Option<String>,
+    /// Mensaje legible (o el principio del cuerpo).
+    pub message: String,
+    status_line: String,
+}
+
+impl ApiError {
+    /// `true` si la instancia exige aceptar los términos vigentes (403
+    /// `terms_acceptance_required`, desde v4.114): hay que abrir la web para aceptarlos.
+    pub fn is_terms_required(&self) -> bool {
+        self.status == 403 && self.code.as_deref() == Some("terms_acceptance_required")
+    }
+}
+
+impl std::fmt::Display for ApiError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}: {}", self.status_line, self.message)
+    }
+}
+
+impl std::error::Error for ApiError {}
+
+pub(crate) fn api_error(status: StatusCode, text: &str) -> ApiError {
+    let body: Value = serde_json::from_str(text).unwrap_or(Value::Null);
+    let err = body.get("error");
+    let code = body
+        .get("code")
+        .or_else(|| err.and_then(|e| e.get("code")))
+        .and_then(|c| c.as_str())
+        .map(str::to_string);
+    let message = err
+        .and_then(|e| e.as_str().or_else(|| e.get("message").and_then(|m| m.as_str())))
+        .or_else(|| body.get("message").and_then(|e| e.as_str()))
+        .map(str::to_string)
+        .unwrap_or_else(|| text.chars().take(200).collect());
+    ApiError {
+        status: status.as_u16(),
+        code,
+        message,
+        status_line: status.to_string(),
+    }
+}
+
 async fn json_or_error(resp: reqwest::Response) -> Result<Value> {
     let status = resp.status();
     let text = resp.text().await.unwrap_or_default();
-    let body: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
     if status.is_success() {
-        return Ok(body);
+        return Ok(serde_json::from_str(&text).unwrap_or(Value::Null));
     }
-    let msg = body
-        .get("error")
-        .or_else(|| body.get("message"))
-        .and_then(|e| e.as_str())
-        .map(str::to_string)
-        .unwrap_or_else(|| text.chars().take(200).collect());
-    Err(anyhow!("{status}: {msg}"))
+    Err(api_error(status, &text).into())
 }
 
 #[cfg(test)]
@@ -446,6 +491,19 @@ mod tests {
         ] {
             s.jar.add_cookie_str(&c, &s.acc.base);
         }
+    }
+
+    #[test]
+    fn errores_con_codigo() {
+        let e = api_error(StatusCode::FORBIDDEN, r#"{"code":"terms_acceptance_required","error":"Acepta los términos"}"#);
+        assert!(e.is_terms_required());
+        assert_eq!(e.to_string(), "403 Forbidden: Acepta los términos");
+        let e = api_error(StatusCode::CONFLICT, r#"{"error":{"code":"duplicate_email","message":"Ya existe"}}"#);
+        assert_eq!(e.code.as_deref(), Some("duplicate_email"));
+        assert!(e.to_string().starts_with("409"));
+        let e = api_error(StatusCode::BAD_GATEWAY, "<html>caído</html>");
+        assert_eq!(e.message, "<html>caído</html>");
+        assert!(!e.is_terms_required());
     }
 
     #[test]
