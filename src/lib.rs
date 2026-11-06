@@ -9,6 +9,8 @@
 //! - [`mcp_server`]: servidor MCP local por stdio (`<App> --mcp`); cada app pone sus herramientas.
 //! - [`rest`]: API REST con sesión de cookies (JWT + CSRF + refresco).
 //! - [`api`]: operaciones tipadas: proyectos, documentos, minutas por blueprint, CRM, horas.
+//! - [`chat`]: chat con el asistente de IA de la instancia (conversaciones, respuesta en
+//!   streaming por SSE y fuentes citadas).
 //! - [`pim`]: agenda, contactos y clientes, tareas, avisos, comentarios, tickets, correo del
 //!   CRM y ayudas de IA (lo que usa IureDesk).
 //! - [`releases`]: aviso de versiones nuevas publicadas en GitHub.
@@ -22,6 +24,7 @@ pub mod account;
 pub mod agents;
 pub mod api;
 pub mod apps;
+pub mod chat;
 pub mod lang;
 pub mod mcp;
 pub mod mcp_server;
