@@ -447,6 +447,12 @@ impl ApiError {
     pub fn is_terms_required(&self) -> bool {
         self.status == 403 && self.code.as_deref() == Some("terms_acceptance_required")
     }
+
+    /// `true` si se agotó una cuota del plan (403 con `quota_exceeded`, p. ej. las
+    /// solicitudes de IA del mes). El mensaje ya viene legible de la instancia.
+    pub fn is_quota_exceeded(&self) -> bool {
+        self.status == 403 && self.code.as_deref() == Some("quota_exceeded")
+    }
 }
 
 impl std::fmt::Display for ApiError {
@@ -464,7 +470,9 @@ pub(crate) fn api_error(status: StatusCode, text: &str) -> ApiError {
         .get("code")
         .or_else(|| err.and_then(|e| e.get("code")))
         .and_then(|c| c.as_str())
-        .map(str::to_string);
+        .map(str::to_string)
+        // Las cuotas del plan no traen `code`: `{"error": "…", "quota_exceeded": "ai_requests"}`.
+        .or_else(|| body.get("quota_exceeded").map(|_| "quota_exceeded".to_string()));
     let message = err
         .and_then(|e| e.as_str().or_else(|| e.get("message").and_then(|m| m.as_str())))
         .or_else(|| body.get("message").and_then(|e| e.as_str()))
@@ -518,6 +526,13 @@ mod tests {
         let e = api_error(StatusCode::BAD_GATEWAY, "<html>caído</html>");
         assert_eq!(e.message, "<html>caído</html>");
         assert!(!e.is_terms_required());
+        let e = api_error(
+            StatusCode::FORBIDDEN,
+            r#"{"error":"Límite de solicitudes IA alcanzado (10/10 este mes).","quota_exceeded":"ai_requests"}"#,
+        );
+        assert!(e.is_quota_exceeded());
+        assert!(!e.is_terms_required());
+        assert_eq!(e.message, "Límite de solicitudes IA alcanzado (10/10 este mes).");
     }
 
     #[test]

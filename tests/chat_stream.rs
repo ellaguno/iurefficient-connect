@@ -110,5 +110,6 @@ async fn la_cuota_agotada_llega_como_error_de_la_instancia() {
     let err = chat::ask_streaming(&sess, Scope::Global, &req, |_| {}).await.unwrap_err();
     let api = err.downcast_ref::<iurefficient_connect::rest::ApiError>().expect("ApiError");
     assert_eq!(api.status, 403);
+    assert!(api.is_quota_exceeded());
     assert!(api.message.contains("Límite mensual"));
 }
