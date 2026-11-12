@@ -33,11 +33,14 @@ impl Kind {
 }
 
 fn entrada(acc: &Account, kind: Kind) -> Result<Entry> {
-    Entry::new(SERVICIO, &format!("{}:{}:{}", acc.host(), acc.email, kind.sufijo())).with_context(|| lang::pick("could not open the system keyring", "no se pudo abrir el llavero del sistema"))
+    Entry::new(SERVICIO, &format!("{}:{}:{}", acc.host(), acc.email, kind.sufijo()))
+        .with_context(|| lang::pick("could not open the system keyring", "no se pudo abrir el llavero del sistema"))
 }
 
 pub fn guardar(acc: &Account, kind: Kind, secreto: &str) -> Result<()> {
-    entrada(acc, kind)?.set_password(secreto).with_context(|| lang::pick("could not save to the keyring", "no se pudo guardar en el llavero"))
+    entrada(acc, kind)?
+        .set_password(secreto)
+        .with_context(|| lang::pick("could not save to the keyring", "no se pudo guardar en el llavero"))
 }
 
 /// `Ok(None)` si no hay nada guardado, distinto de que el llavero falle.
@@ -52,6 +55,8 @@ pub fn leer(acc: &Account, kind: Kind) -> Result<Option<String>> {
 pub fn borrar(acc: &Account, kind: Kind) -> Result<()> {
     match entrada(acc, kind)?.delete_credential() {
         Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-        Err(e) => Err(e).with_context(|| lang::pick("could not delete from the keyring", "no se pudo borrar del llavero")),
+        Err(e) => {
+            Err(e).with_context(|| lang::pick("could not delete from the keyring", "no se pudo borrar del llavero"))
+        }
     }
 }

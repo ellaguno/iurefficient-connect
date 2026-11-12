@@ -104,7 +104,10 @@ async fn un_fallo_del_worker_se_detecta_con_el_latido() {
 
 #[tokio::test]
 async fn la_cuota_agotada_llega_como_error_de_la_instancia() {
-    let (base, _log) = serve(|_| json("403 Forbidden", r#"{"error":"Límite mensual de IA alcanzado","quota_exceeded":"ai_requests"}"#)).await;
+    let (base, _log) = serve(|_| {
+        json("403 Forbidden", r#"{"error":"Límite mensual de IA alcanzado","quota_exceeded":"ai_requests"}"#)
+    })
+    .await;
     let sess = session(&base);
     let req = Request { message: "hola", ..Default::default() };
     let err = chat::ask_streaming(&sess, Scope::Global, &req, |_| {}).await.unwrap_err();

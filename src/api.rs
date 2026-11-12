@@ -61,11 +61,13 @@ fn case_from(v: &Value) -> CaseSummary {
         case_number: s(v, "case_number"),
         title: s(v, "title"),
         status: s(v, "status"),
-        client_name: client.and_then(|c| opt(c, "display_name").or_else(|| opt(c, "company_name")).or_else(|| {
-            let n = format!("{} {}", s(c, "first_name"), s(c, "last_name"));
-            let n = n.trim().to_string();
-            (!n.is_empty()).then_some(n)
-        })),
+        client_name: client.and_then(|c| {
+            opt(c, "display_name").or_else(|| opt(c, "company_name")).or_else(|| {
+                let n = format!("{} {}", s(c, "first_name"), s(c, "last_name"));
+                let n = n.trim().to_string();
+                (!n.is_empty()).then_some(n)
+            })
+        }),
         client_id: opt(v, "client_id"),
     }
 }
@@ -127,18 +129,40 @@ pub struct UploadOptions {
 /// Sube un archivo como documento (`POST /api/documents`, multipart). La instancia
 /// valida la extensión (`.srt`/`.vtt` no se admiten por defecto: usa [`crate::webdav::fallback_name`]).
 pub async fn upload_document(sess: &Session, local: &Path, opts: &UploadOptions) -> Result<Document> {
-    let bytes = tokio::fs::read(local).await.with_context(|| tr!("Could not read {}", "No se pudo leer {}", local.display()))?;
-    let name = opts.file_name.clone().or_else(|| local.file_name().map(|n| n.to_string_lossy().into_owned())).unwrap_or_else(|| "archivo".into());
+    let bytes = tokio::fs::read(local)
+        .await
+        .with_context(|| tr!("Could not read {}", "No se pudo leer {}", local.display()))?;
+    let name = opts
+        .file_name
+        .clone()
+        .or_else(|| local.file_name().map(|n| n.to_string_lossy().into_owned()))
+        .unwrap_or_else(|| "archivo".into());
     let mut form = Form::new().part("file", Part::bytes(bytes).file_name(name));
-    if let Some(c) = &opts.case_id { form = form.text("case_id", c.clone()); }
-    if let Some(c) = &opts.client_id { form = form.text("client_id", c.clone()); }
-    if let Some(t) = &opts.title { form = form.text("title", t.clone()); }
-    if let Some(t) = &opts.document_type { form = form.text("document_type", t.clone()); }
-    if let Some(d) = &opts.description { form = form.text("description", d.clone()); }
-    if !opts.tags.is_empty() { form = form.text("tags", serde_json::to_string(&opts.tags)?); }
-    if let Some(v) = &opts.as_version_of { form = form.text("as_version_of", v.clone()); }
+    if let Some(c) = &opts.case_id {
+        form = form.text("case_id", c.clone());
+    }
+    if let Some(c) = &opts.client_id {
+        form = form.text("client_id", c.clone());
+    }
+    if let Some(t) = &opts.title {
+        form = form.text("title", t.clone());
+    }
+    if let Some(t) = &opts.document_type {
+        form = form.text("document_type", t.clone());
+    }
+    if let Some(d) = &opts.description {
+        form = form.text("description", d.clone());
+    }
+    if !opts.tags.is_empty() {
+        form = form.text("tags", serde_json::to_string(&opts.tags)?);
+    }
+    if let Some(v) = &opts.as_version_of {
+        form = form.text("as_version_of", v.clone());
+    }
     let v = sess.post_multipart("/api/documents", form).await.map_err(map_upload_error)?;
-    let d = v.get("document").ok_or_else(|| anyhow!(lang::pick("The instance did not return the document", "La instancia no devolvió el documento")))?;
+    let d = v.get("document").ok_or_else(|| {
+        anyhow!(lang::pick("The instance did not return the document", "La instancia no devolvió el documento"))
+    })?;
     let mut doc = document_from(d);
     doc.is_version = v.get("is_version").and_then(|b| b.as_bool()).unwrap_or(false);
     Ok(doc)
@@ -146,26 +170,56 @@ pub async fn upload_document(sess: &Session, local: &Path, opts: &UploadOptions)
 
 /// Igual que [`upload_document`] con el contenido en memoria (`file_name` lleva la extensión,
 /// que la instancia valida: `.txt`, `.md`, `.pdf`…; `.eml` no se admite).
-pub async fn upload_document_bytes(sess: &Session, bytes: Vec<u8>, file_name: &str, opts: &UploadOptions) -> Result<Document> {
+pub async fn upload_document_bytes(
+    sess: &Session,
+    bytes: Vec<u8>,
+    file_name: &str,
+    opts: &UploadOptions,
+) -> Result<Document> {
     let mut form = Form::new().part("file", Part::bytes(bytes).file_name(file_name.to_string()));
-    if let Some(c) = &opts.case_id { form = form.text("case_id", c.clone()); }
-    if let Some(c) = &opts.client_id { form = form.text("client_id", c.clone()); }
-    if let Some(t) = &opts.title { form = form.text("title", t.clone()); }
-    if let Some(t) = &opts.document_type { form = form.text("document_type", t.clone()); }
-    if let Some(d) = &opts.description { form = form.text("description", d.clone()); }
-    if !opts.tags.is_empty() { form = form.text("tags", serde_json::to_string(&opts.tags)?); }
-    if let Some(v) = &opts.as_version_of { form = form.text("as_version_of", v.clone()); }
+    if let Some(c) = &opts.case_id {
+        form = form.text("case_id", c.clone());
+    }
+    if let Some(c) = &opts.client_id {
+        form = form.text("client_id", c.clone());
+    }
+    if let Some(t) = &opts.title {
+        form = form.text("title", t.clone());
+    }
+    if let Some(t) = &opts.document_type {
+        form = form.text("document_type", t.clone());
+    }
+    if let Some(d) = &opts.description {
+        form = form.text("description", d.clone());
+    }
+    if !opts.tags.is_empty() {
+        form = form.text("tags", serde_json::to_string(&opts.tags)?);
+    }
+    if let Some(v) = &opts.as_version_of {
+        form = form.text("as_version_of", v.clone());
+    }
     let v = sess.post_multipart("/api/documents", form).await.map_err(map_upload_error)?;
-    let d = v.get("document").ok_or_else(|| anyhow!(lang::pick("The instance did not return the document", "La instancia no devolvió el documento")))?;
+    let d = v.get("document").ok_or_else(|| {
+        anyhow!(lang::pick("The instance did not return the document", "La instancia no devolvió el documento"))
+    })?;
     let mut doc = document_from(d);
     doc.is_version = v.get("is_version").and_then(|b| b.as_bool()).unwrap_or(false);
     Ok(doc)
 }
 
 /// Igual que [`crm_attach_file`] con el contenido en memoria.
-pub async fn crm_attach_bytes(sess: &Session, kind: CrmKind, id: &str, bytes: Vec<u8>, file_name: &str) -> Result<Document> {
+pub async fn crm_attach_bytes(
+    sess: &Session,
+    kind: CrmKind,
+    id: &str,
+    bytes: Vec<u8>,
+    file_name: &str,
+) -> Result<Document> {
     let form = Form::new().part("file", Part::bytes(bytes).file_name(file_name.to_string()));
-    let v = sess.post_multipart(&format!("/api/plugins/crm/{}/{id}/documents", kind.segment()), form).await.map_err(map_upload_error)?;
+    let v = sess
+        .post_multipart(&format!("/api/plugins/crm/{}/{id}/documents", kind.segment()), form)
+        .await
+        .map_err(map_upload_error)?;
     Ok(document_from(&v))
 }
 
@@ -174,7 +228,10 @@ fn map_upload_error(e: anyhow::Error) -> anyhow::Error {
     if m.contains("File type not allowed") {
         anyhow!(lang::pick("The instance does not accept that file type", "La instancia no admite ese tipo de archivo"))
     } else if m.contains("quota") || m.contains("cuota") {
-        anyhow!(lang::pick("The plan's storage quota has been reached", "Se alcanzó la cuota de almacenamiento del plan"))
+        anyhow!(lang::pick(
+            "The plan's storage quota has been reached",
+            "Se alcanzó la cuota de almacenamiento del plan"
+        ))
     } else {
         e
     }
@@ -195,7 +252,9 @@ pub struct DocumentInfo {
 /// `GET /api/documents/<id>`: metadatos del documento (nombre real de archivo, tipo MIME…).
 pub async fn document(sess: &Session, doc_id: &str) -> Result<DocumentInfo> {
     let v = sess.get_json(&format!("/api/documents/{doc_id}")).await?;
-    let d = v.get("document").ok_or_else(|| anyhow!(lang::pick("The instance did not return the document", "La instancia no devolvió el documento")))?;
+    let d = v.get("document").ok_or_else(|| {
+        anyhow!(lang::pick("The instance did not return the document", "La instancia no devolvió el documento"))
+    })?;
     Ok(DocumentInfo {
         id: s(d, "id"),
         title: s(d, "title"),
@@ -218,7 +277,11 @@ pub async fn download_document(sess: &Session, doc_id: &str, local: &Path) -> Re
     let rb = sess.request(reqwest::Method::GET, &format!("/api/documents/{doc_id}/download?download=true")).await?;
     let resp = rb.send().await?;
     if !resp.status().is_success() {
-        return Err(anyhow!(tr!("Could not download the document ({})", "No se pudo descargar el documento ({})", resp.status())));
+        return Err(anyhow!(tr!(
+            "Could not download the document ({})",
+            "No se pudo descargar el documento ({})",
+            resp.status()
+        )));
     }
     let bytes = resp.bytes().await?;
     tokio::fs::write(local, &bytes).await?;
@@ -290,22 +353,41 @@ pub struct ComposeRequest {
 /// Lanza la composición; devuelve `task_id`.
 pub async fn compose(sess: &Session, blueprint_id: &str, req: &ComposeRequest) -> Result<String> {
     let mut body = json!({"source_document_ids": req.source_document_ids, "force": req.force});
-    if let Some(c) = &req.case_id { body["case_id"] = json!(c); }
-    if let Some(t) = &req.title { body["title"] = json!(t); }
-    if let Some(x) = &req.extra_instructions { body["extra_instructions"] = json!(x); }
-    if !req.attendees.is_empty() { body["attendees"] = json!(req.attendees); }
-    if !req.speaker_map.is_empty() { body["speaker_map"] = json!(req.speaker_map); }
+    if let Some(c) = &req.case_id {
+        body["case_id"] = json!(c);
+    }
+    if let Some(t) = &req.title {
+        body["title"] = json!(t);
+    }
+    if let Some(x) = &req.extra_instructions {
+        body["extra_instructions"] = json!(x);
+    }
+    if !req.attendees.is_empty() {
+        body["attendees"] = json!(req.attendees);
+    }
+    if !req.speaker_map.is_empty() {
+        body["speaker_map"] = json!(req.speaker_map);
+    }
     let v = sess.post_json(&format!("/api/blueprints/{blueprint_id}/compose"), &body).await.map_err(|e| {
         let m = e.to_string();
         if m.contains("ALREADY_COMPOSING") || m.contains("Ya se está generando") {
-            anyhow!(lang::pick("A document is already being generated from that material; wait for it to finish", "Ya se está generando un documento a partir de ese material; espera a que termine"))
+            anyhow!(lang::pick(
+                "A document is already being generated from that material; wait for it to finish",
+                "Ya se está generando un documento a partir de ese material; espera a que termine"
+            ))
         } else if m.contains("SOURCE_WITHOUT_TEXT") {
-            anyhow!(lang::pick("The source document has no readable text yet", "El documento fuente no tiene texto legible todavía"))
+            anyhow!(lang::pick(
+                "The source document has no readable text yet",
+                "El documento fuente no tiene texto legible todavía"
+            ))
         } else {
             e
         }
     })?;
-    v.get("task_id").and_then(|t| t.as_str()).map(str::to_string).ok_or_else(|| anyhow!(lang::pick("The instance did not return a task_id", "La instancia no devolvió task_id")))
+    v.get("task_id")
+        .and_then(|t| t.as_str())
+        .map(str::to_string)
+        .ok_or_else(|| anyhow!(lang::pick("The instance did not return a task_id", "La instancia no devolvió task_id")))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -373,9 +455,16 @@ pub async fn commitments(sess: &Session, doc_id: &str) -> Result<(Vec<Commitment
 }
 
 /// `POST /api/documents/<id>/commitments/apply`: convierte compromisos en tareas.
-pub async fn apply_commitments(sess: &Session, doc_id: &str, items: &[Commitment], case_id: Option<&str>) -> Result<u64> {
+pub async fn apply_commitments(
+    sess: &Session,
+    doc_id: &str,
+    items: &[Commitment],
+    case_id: Option<&str>,
+) -> Result<u64> {
     let mut body = json!({"commitments": items});
-    if let Some(c) = case_id { body["case_id"] = json!(c); }
+    if let Some(c) = case_id {
+        body["case_id"] = json!(c);
+    }
     let v = sess.post_json(&format!("/api/documents/{doc_id}/commitments/apply"), &body).await?;
     Ok(v["created"].as_u64().unwrap_or(0))
 }
@@ -426,16 +515,26 @@ pub async fn create_webdav_token(sess: &Session, name: &str, ttl_days: Option<u3
     let body = json!({"name": name, "ttl_days": ttl_days.map(|d| d as i64).unwrap_or(0)});
     let v = sess.post_json("/api/system/webdav/tokens", &body).await.map_err(|e| {
         if e.to_string().contains("Demasiados tokens") {
-            anyhow!(lang::pick("You already have 20 active app passwords on the instance; revoke one from your profile", "Ya tienes 20 contraseñas de aplicación activas en la instancia; revoca alguna desde tu perfil"))
+            anyhow!(lang::pick(
+                "You already have 20 active app passwords on the instance; revoke one from your profile",
+                "Ya tienes 20 contraseñas de aplicación activas en la instancia; revoca alguna desde tu perfil"
+            ))
         } else {
             e
         }
     })?;
     let secret = s(&v, "secret");
     if secret.is_empty() {
-        return Err(anyhow!(lang::pick("The instance did not return the app password", "La instancia no devolvió la contraseña de aplicación")));
+        return Err(anyhow!(lang::pick(
+            "The instance did not return the app password",
+            "La instancia no devolvió la contraseña de aplicación"
+        )));
     }
-    Ok(NewWebDavToken { info: webdav_token_from(&v["token"]), secret, username: opt(&v, "username").unwrap_or_else(|| sess.account().email.clone()) })
+    Ok(NewWebDavToken {
+        info: webdav_token_from(&v["token"]),
+        secret,
+        username: opt(&v, "username").unwrap_or_else(|| sess.account().email.clone()),
+    })
 }
 
 /// `DELETE /api/system/webdav/tokens/<id>`.
@@ -443,7 +542,11 @@ pub async fn revoke_webdav_token(sess: &Session, token_id: &str) -> Result<()> {
     let rb = sess.request(reqwest::Method::DELETE, &format!("/api/system/webdav/tokens/{token_id}")).await?;
     let resp = rb.send().await?;
     if !resp.status().is_success() {
-        return Err(anyhow!(tr!("Could not revoke the app password ({})", "No se pudo revocar la contraseña de aplicación ({})", resp.status())));
+        return Err(anyhow!(tr!(
+            "Could not revoke the app password ({})",
+            "No se pudo revocar la contraseña de aplicación ({})",
+            resp.status()
+        )));
     }
     Ok(())
 }
@@ -506,7 +609,8 @@ fn map_mcp_error(e: anyhow::Error) -> anyhow::Error {
 pub async fn list_mcp_tokens(sess: &Session) -> Result<McpTokens> {
     let v = sess.get_json("/api/mcp-tokens").await.map_err(map_mcp_error)?;
     let endpoint = s(&v, "endpoint_url");
-    let endpoint_url = if endpoint.starts_with("http") { endpoint } else { sess.account().api("/api/mcp")?.to_string() };
+    let endpoint_url =
+        if endpoint.starts_with("http") { endpoint } else { sess.account().api("/api/mcp")?.to_string() };
     Ok(McpTokens {
         endpoint_url,
         tokens: v["tokens"].as_array().map(|a| a.iter().map(mcp_token_from).collect()).unwrap_or_default(),
@@ -528,7 +632,10 @@ pub async fn create_mcp_token(sess: &Session, name: &str, ttl_days: Option<u32>)
     let v = sess.post_json("/api/mcp-tokens", &body).await.map_err(map_mcp_error)?;
     let secret = s(&v, "token");
     if !secret.starts_with("iurmcp_") {
-        return Err(anyhow!(lang::pick("The instance did not return the agent token", "La instancia no devolvió el token de agente")));
+        return Err(anyhow!(lang::pick(
+            "The instance did not return the agent token",
+            "La instancia no devolvió el token de agente"
+        )));
     }
     Ok(NewMcpToken { info: mcp_token_from(&v), secret })
 }
@@ -538,7 +645,11 @@ pub async fn revoke_mcp_token(sess: &Session, token_id: &str) -> Result<()> {
     let rb = sess.request(reqwest::Method::DELETE, &format!("/api/mcp-tokens/{token_id}")).await?;
     let resp = rb.send().await?;
     if !resp.status().is_success() {
-        return Err(anyhow!(tr!("Could not revoke the agent token ({})", "No se pudo revocar el token de agente ({})", resp.status())));
+        return Err(anyhow!(tr!(
+            "Could not revoke the agent token ({})",
+            "No se pudo revocar el token de agente ({})",
+            resp.status()
+        )));
     }
     Ok(())
 }
@@ -550,14 +661,22 @@ pub async fn revoke_mcp_token(sess: &Session, token_id: &str) -> Result<()> {
 /// `POST /api/chat/global/chat`: envía un mensaje al asistente de la instancia con un
 /// `system_prompt` propio y documentos como contexto. Devuelve el texto de la respuesta.
 /// Consume la cuota de IA del plan (403 `quota_exceeded` si se agotó).
-pub async fn global_chat(sess: &Session, message: &str, system_prompt: Option<&str>, document_ids: &[String]) -> Result<String> {
+pub async fn global_chat(
+    sess: &Session,
+    message: &str,
+    system_prompt: Option<&str>,
+    document_ids: &[String],
+) -> Result<String> {
     let mut body = json!({"message": message, "document_ids": document_ids, "enable_url_extraction": false});
     if let Some(sp) = system_prompt.filter(|s| !s.trim().is_empty()) {
         body["system_prompt"] = json!(sp);
     }
     let v = sess.post_json("/api/chat/global/chat", &body).await.map_err(|e| {
         if e.to_string().contains("quota_exceeded") || e.to_string().contains("403") {
-            anyhow!(lang::pick("The plan's AI quota on the instance has been reached", "Se alcanzó la cuota de IA del plan en la instancia"))
+            anyhow!(lang::pick(
+                "The plan's AI quota on the instance has been reached",
+                "Se alcanzó la cuota de IA del plan en la instancia"
+            ))
         } else {
             e
         }
@@ -574,11 +693,27 @@ pub async fn global_chat(sess: &Session, message: &str, system_prompt: Option<&s
 // ---------------------------------------------------------------------------
 
 /// `POST /api/cases/<id>/time-entries`. `entry_date` en `YYYY-MM-DD` (hoy si `None`).
-pub async fn add_time_entry(sess: &Session, case_id: &str, hours: f64, description: &str, billable: bool, entry_date: Option<&str>) -> Result<String> {
+pub async fn add_time_entry(
+    sess: &Session,
+    case_id: &str,
+    hours: f64,
+    description: &str,
+    billable: bool,
+    entry_date: Option<&str>,
+) -> Result<String> {
     let mut body = json!({"hours": hours, "description": description, "billable": billable});
-    if let Some(d) = entry_date { body["entry_date"] = json!(d); }
+    if let Some(d) = entry_date {
+        body["entry_date"] = json!(d);
+    }
     let v = sess.post_json(&format!("/api/cases/{case_id}/time-entries"), &body).await.map_err(|e| {
-        if e.to_string().contains("409") { anyhow!(lang::pick("That week has already been submitted and does not accept new hours", "Esa semana ya fue enviada y no admite horas nuevas")) } else { e }
+        if e.to_string().contains("409") {
+            anyhow!(lang::pick(
+                "That week has already been submitted and does not accept new hours",
+                "Esa semana ya fue enviada y no admite horas nuevas"
+            ))
+        } else {
+            e
+        }
     })?;
     Ok(s(&v["time_entry"], "id"))
 }
@@ -640,7 +775,11 @@ pub async fn crm_list(sess: &Session, kind: CrmKind, search: Option<&str>, limit
                     id: s(i, "id"),
                     name: if kind == CrmKind::Lead {
                         let n = s(i, "name");
-                        if n.is_empty() { s(i, "company_name") } else { n }
+                        if n.is_empty() {
+                            s(i, "company_name")
+                        } else {
+                            n
+                        }
                     } else {
                         s(i, "name")
                     },
@@ -655,17 +794,33 @@ pub async fn crm_list(sess: &Session, kind: CrmKind, search: Option<&str>, limit
 }
 
 /// Adjunta un archivo a un lead u oportunidad (`POST …/<id>/documents`, multipart `file`).
-pub async fn crm_attach_file(sess: &Session, kind: CrmKind, id: &str, local: &Path, file_name: Option<&str>) -> Result<Document> {
-    let bytes = tokio::fs::read(local).await.with_context(|| tr!("Could not read {}", "No se pudo leer {}", local.display()))?;
-    let name = file_name.map(str::to_string).or_else(|| local.file_name().map(|n| n.to_string_lossy().into_owned())).unwrap_or_else(|| "archivo".into());
+pub async fn crm_attach_file(
+    sess: &Session,
+    kind: CrmKind,
+    id: &str,
+    local: &Path,
+    file_name: Option<&str>,
+) -> Result<Document> {
+    let bytes = tokio::fs::read(local)
+        .await
+        .with_context(|| tr!("Could not read {}", "No se pudo leer {}", local.display()))?;
+    let name = file_name
+        .map(str::to_string)
+        .or_else(|| local.file_name().map(|n| n.to_string_lossy().into_owned()))
+        .unwrap_or_else(|| "archivo".into());
     let form = Form::new().part("file", Part::bytes(bytes).file_name(name));
-    let v = sess.post_multipart(&format!("/api/plugins/crm/{}/{id}/documents", kind.segment()), form).await.map_err(map_upload_error)?;
+    let v = sess
+        .post_multipart(&format!("/api/plugins/crm/{}/{id}/documents", kind.segment()), form)
+        .await
+        .map_err(map_upload_error)?;
     Ok(document_from(&v))
 }
 
 /// Vincula un documento ya existente a un lead u oportunidad.
 pub async fn crm_attach_document(sess: &Session, kind: CrmKind, id: &str, document_id: &str) -> Result<Document> {
-    let v = sess.post_json(&format!("/api/plugins/crm/{}/{id}/documents", kind.segment()), &json!({"document_id": document_id})).await?;
+    let v = sess
+        .post_json(&format!("/api/plugins/crm/{}/{id}/documents", kind.segment()), &json!({"document_id": document_id}))
+        .await?;
     Ok(document_from(&v))
 }
 
@@ -687,9 +842,15 @@ pub async fn crm_activity(
         CrmKind::Lead => body["lead_id"] = json!(id),
         CrmKind::Opportunity => body["opportunity_id"] = json!(id),
     }
-    if let Some(d) = description { body["description"] = json!(d); }
-    if let Some(m) = duration_minutes { body["duration_minutes"] = json!(m); }
-    if let Some(c) = completed_at_iso { body["completed_at"] = json!(c); }
+    if let Some(d) = description {
+        body["description"] = json!(d);
+    }
+    if let Some(m) = duration_minutes {
+        body["duration_minutes"] = json!(m);
+    }
+    if let Some(c) = completed_at_iso {
+        body["completed_at"] = json!(c);
+    }
     let v = sess.post_json("/api/plugins/crm/activities", &body).await?;
     Ok(s(&v, "id"))
 }

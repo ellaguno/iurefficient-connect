@@ -46,21 +46,15 @@ impl Scope<'_> {
 
 /// Crea una conversación y devuelve su id. El título se ve en la web de la instancia.
 pub async fn new_conversation(sess: &Session, scope: Scope<'_>, title: &str) -> Result<String> {
-    let v = sess
-        .post_json(&format!("{}/conversations", scope.base()), &json!({ "title": title }))
-        .await?;
-    v["conversation"]["id"]
-        .as_str()
-        .map(str::to_string)
-        .ok_or_else(|| anyhow!(tr!("The instance did not create the conversation", "La instancia no creó la conversación")))
+    let v = sess.post_json(&format!("{}/conversations", scope.base()), &json!({ "title": title })).await?;
+    v["conversation"]["id"].as_str().map(str::to_string).ok_or_else(|| {
+        anyhow!(tr!("The instance did not create the conversation", "La instancia no creó la conversación"))
+    })
 }
 
 /// Borra (desactiva) una conversación. Una que ya no existe no es error.
 pub async fn delete_conversation(sess: &Session, scope: Scope<'_>, conversation_id: &str) -> Result<()> {
-    match sess
-        .delete_json(&format!("{}/conversations/{conversation_id}", scope.base()))
-        .await
-    {
+    match sess.delete_json(&format!("{}/conversations/{conversation_id}", scope.base())).await {
         Ok(_) => Ok(()),
         Err(e) if e.downcast_ref::<crate::rest::ApiError>().is_some_and(|a| a.status == 404) => Ok(()),
         Err(e) => Err(e),
@@ -163,9 +157,7 @@ pub async fn ask_streaming(
     req: &Request<'_>,
     mut on_token: impl FnMut(&str),
 ) -> Result<Answer> {
-    let queued = sess
-        .post_json(&format!("{}/chat/async", scope.base()), &body_of(req, scope))
-        .await?;
+    let queued = sess.post_json(&format!("{}/chat/async", scope.base()), &body_of(req, scope)).await?;
     let message_id = s(&queued["user_message"], "id");
     if message_id.is_empty() {
         return Err(anyhow!(tr!("The instance did not queue the question", "La instancia no encoló la pregunta")));
@@ -272,7 +264,10 @@ async fn wait_final(sess: &Session, message_id: &str) -> Result<Answer> {
             return Ok(a);
         }
         if start.elapsed() > Duration::from_secs(600) {
-            return Err(anyhow!(tr!("The instance took too long to answer", "La instancia tardó demasiado en responder")));
+            return Err(anyhow!(tr!(
+                "The instance took too long to answer",
+                "La instancia tardó demasiado en responder"
+            )));
         }
         let wait = if start.elapsed() < Duration::from_secs(10) { 500 } else { 2000 };
         tokio::time::sleep(Duration::from_millis(wait)).await;
@@ -286,8 +281,13 @@ async fn wait_final(sess: &Session, message_id: &str) -> Result<Answer> {
 #[derive(Debug, PartialEq, Eq)]
 enum SseEvent {
     /// Fragmento de texto; `id` es el cursor para retomar tras él.
-    Token { id: Option<u64>, text: String },
-    Done { status: String },
+    Token {
+        id: Option<u64>,
+        text: String,
+    },
+    Done {
+        status: String,
+    },
     /// Comentario (`: latido`): la conexión sigue viva sin fragmentos nuevos.
     Heartbeat,
 }
@@ -366,7 +366,9 @@ mod tests {
     fn sse_en_trozos_arbitrarios() {
         let mut p = SseParser::default();
         assert!(p.push("id: 1\nevent: tok").is_empty());
-        let evs = p.push("en\ndata: {\"text\": \"Hola\"}\n\nid: 2\nevent: token\ndata: {\"text\": \" mundo\\n\"}\n\n: latido\n\n");
+        let evs = p.push(
+            "en\ndata: {\"text\": \"Hola\"}\n\nid: 2\nevent: token\ndata: {\"text\": \" mundo\\n\"}\n\n: latido\n\n",
+        );
         assert_eq!(
             evs,
             vec![

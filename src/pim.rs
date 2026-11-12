@@ -23,11 +23,7 @@ fn b(v: &Value, k: &str) -> bool {
 fn strings(v: &Value, k: &str) -> Vec<String> {
     v.get(k)
         .and_then(|x| x.as_array())
-        .map(|a| {
-            a.iter()
-                .filter_map(|x| x.as_str().map(str::to_string))
-                .collect()
-        })
+        .map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect())
         .unwrap_or_default()
 }
 
@@ -41,10 +37,7 @@ fn id_of(v: &Value, k: &str) -> Option<String> {
 }
 
 fn list<T>(v: &Value, k: &str, f: impl Fn(&Value) -> T) -> Vec<T> {
-    v.get(k)
-        .and_then(|x| x.as_array())
-        .map(|a| a.iter().map(f).collect())
-        .unwrap_or_default()
+    v.get(k).and_then(|x| x.as_array()).map(|a| a.iter().map(f).collect()).unwrap_or_default()
 }
 
 /// Inserta en `body` sólo los campos con valor (`None` no se manda: la instancia lo
@@ -59,10 +52,7 @@ fn put_opt(body: &mut Map<String, Value>, k: &str, v: &Option<String>) {
 /// Ids: `iur-crm`, `iur-tickets`, `iur-collab`, `iur-portal`…
 pub async fn plugin_available(sess: &Session, plugin_id: &str) -> Result<bool> {
     let v = sess.get_json("/api/plugins").await?;
-    Ok(v["plugins"]
-        .as_array()
-        .map(|a| a.iter().any(|p| s(p, "id") == plugin_id))
-        .unwrap_or(false))
+    Ok(v["plugins"].as_array().map(|a| a.iter().any(|p| s(p, "id") == plugin_id)).unwrap_or(false))
 }
 
 // ---------------------------------------------------------------------------
@@ -134,20 +124,15 @@ pub async fn events(
     if let Some(x) = case_id {
         q.push(format!("case_id={}", urlencode(x)));
     }
-    let path = if q.is_empty() {
-        "/api/calendar-events".to_string()
-    } else {
-        format!("/api/calendar-events?{}", q.join("&"))
-    };
+    let path =
+        if q.is_empty() { "/api/calendar-events".to_string() } else { format!("/api/calendar-events?{}", q.join("&")) };
     let v = sess.get_json(&path).await?;
     Ok(list(&v, "events", event_from))
 }
 
 /// `GET /api/calendar-events/<id>`.
 pub async fn event(sess: &Session, id: &str) -> Result<CalendarEvent> {
-    let v = sess
-        .get_json(&format!("/api/calendar-events/{}", urlencode(id)))
-        .await?;
+    let v = sess.get_json(&format!("/api/calendar-events/{}", urlencode(id))).await?;
     Ok(event_from(&v["event"]))
 }
 
@@ -181,10 +166,7 @@ fn event_body(e: &EventInput) -> Value {
     put_opt(&mut m, "event_type", &e.event_type);
     put_opt(&mut m, "color", &e.color);
     if let Some(c) = &e.case_id {
-        m.insert(
-            "case_id".into(),
-            if c.is_empty() { Value::Null } else { json!(c) },
-        );
+        m.insert("case_id".into(), if c.is_empty() { Value::Null } else { json!(c) });
     }
     if let Some(x) = e.reminder_minutes {
         m.insert("reminder_minutes".into(), json!(x));
@@ -194,36 +176,25 @@ fn event_body(e: &EventInput) -> Value {
 
 /// `POST /api/calendar-events` (título, inicio y fin obligatorios).
 pub async fn create_event(sess: &Session, e: &EventInput) -> Result<CalendarEvent> {
-    if e.title.as_deref().map_or(true, |t| t.trim().is_empty())
-        || e.start.is_none()
-        || e.end.is_none()
-    {
+    if e.title.as_deref().map_or(true, |t| t.trim().is_empty()) || e.start.is_none() || e.end.is_none() {
         return Err(anyhow!(lang::pick(
             "An event needs a title, a start and an end",
             "Un evento necesita título, inicio y fin"
         )));
     }
-    let v = sess
-        .post_json("/api/calendar-events", &event_body(e))
-        .await?;
+    let v = sess.post_json("/api/calendar-events", &event_body(e)).await?;
     Ok(event_from(&v["event"]))
 }
 
 /// `PUT /api/calendar-events/<id>` (sólo los campos `Some`).
 pub async fn update_event(sess: &Session, id: &str, e: &EventInput) -> Result<CalendarEvent> {
-    let v = sess
-        .put_json(
-            &format!("/api/calendar-events/{}", urlencode(id)),
-            &event_body(e),
-        )
-        .await?;
+    let v = sess.put_json(&format!("/api/calendar-events/{}", urlencode(id)), &event_body(e)).await?;
     Ok(event_from(&v["event"]))
 }
 
 /// `DELETE /api/calendar-events/<id>`.
 pub async fn delete_event(sess: &Session, id: &str) -> Result<()> {
-    sess.delete_json(&format!("/api/calendar-events/{}", urlencode(id)))
-        .await?;
+    sess.delete_json(&format!("/api/calendar-events/{}", urlencode(id))).await?;
     Ok(())
 }
 
@@ -299,9 +270,7 @@ pub async fn contacts(sess: &Session, contact_type: Option<&str>) -> Result<Vec<
 
 /// `GET /api/contacts/<id>`.
 pub async fn contact(sess: &Session, id: &str) -> Result<Contact> {
-    let v = sess
-        .get_json(&format!("/api/contacts/{}", urlencode(id)))
-        .await?;
+    let v = sess.get_json(&format!("/api/contacts/{}", urlencode(id))).await?;
     Ok(contact_from(v.get("contact").unwrap_or(&v)))
 }
 
@@ -361,21 +330,13 @@ fn map_duplicate(e: anyhow::Error) -> anyhow::Error {
 
 /// `POST /api/contacts` (`contact_type` `other` por omisión).
 pub async fn create_contact(sess: &Session, c: &ContactInput) -> Result<Contact> {
-    let v = sess
-        .post_json("/api/contacts", &contact_body(c))
-        .await
-        .map_err(map_duplicate)?;
+    let v = sess.post_json("/api/contacts", &contact_body(c)).await.map_err(map_duplicate)?;
     Ok(contact_from(v.get("contact").unwrap_or(&v)))
 }
 
 /// `PUT /api/contacts/<id>` (sólo los campos `Some`).
 pub async fn update_contact(sess: &Session, id: &str, c: &ContactInput) -> Result<Contact> {
-    let v = sess
-        .put_json(
-            &format!("/api/contacts/{}", urlencode(id)),
-            &contact_body(c),
-        )
-        .await?;
+    let v = sess.put_json(&format!("/api/contacts/{}", urlencode(id)), &contact_body(c)).await?;
     Ok(contact_from(v.get("contact").unwrap_or(&v)))
 }
 
@@ -444,26 +405,17 @@ fn pagination(v: &Value, shown: usize) -> (u64, bool) {
 /// `GET /api/clients?include_counts=false&paginate=true&page=&limit=` (clientes activos;
 /// `limit` máx. 200). Para recorrerlos todos, pide páginas mientras `has_next`.
 pub async fn clients(sess: &Session, page: u32, limit: u32) -> Result<Page<Client>> {
-    let path = format!(
-        "/api/clients?include_counts=false&paginate=true&page={}&limit={}",
-        page.max(1),
-        limit.clamp(1, 200)
-    );
+    let path =
+        format!("/api/clients?include_counts=false&paginate=true&page={}&limit={}", page.max(1), limit.clamp(1, 200));
     let v = sess.get_json(&path).await?;
     let items = list(&v, "clients", client_from);
     let (total, has_next) = pagination(&v, items.len());
-    Ok(Page {
-        items,
-        total,
-        has_next,
-    })
+    Ok(Page { items, total, has_next })
 }
 
 /// `GET /api/clients/<id>`.
 pub async fn client(sess: &Session, id: &str) -> Result<Client> {
-    let v = sess
-        .get_json(&format!("/api/clients/{}", urlencode(id)))
-        .await?;
+    let v = sess.get_json(&format!("/api/clients/{}", urlencode(id))).await?;
     Ok(client_from(v.get("client").unwrap_or(&v)))
 }
 
@@ -490,11 +442,7 @@ pub(crate) fn search_hits(v: &Value) -> Vec<SearchHit> {
         out.push(SearchHit {
             kind: "case".into(),
             id: id_of(c, "id").unwrap_or_default(),
-            title: if n.is_empty() {
-                t
-            } else {
-                format!("{n} · {t}")
-            },
+            title: if n.is_empty() { t } else { format!("{n} · {t}") },
             subtitle: opt(c, "client"),
         });
     }
@@ -543,9 +491,7 @@ pub async fn search(sess: &Session, q: &str) -> Result<Vec<SearchHit>> {
     if q.chars().count() < 2 {
         return Ok(vec![]);
     }
-    let v = sess
-        .get_json(&format!("/api/search?q={}", urlencode(q)))
-        .await?;
+    let v = sess.get_json(&format!("/api/search?q={}", urlencode(q))).await?;
     Ok(search_hits(&v))
 }
 
@@ -583,10 +529,7 @@ pub(crate) fn task_from(v: &Value) -> Task {
         status: s(v, "status"),
         priority: opt(v, "priority"),
         case_id: opt(v, "case_id"),
-        case_title: v
-            .get("case")
-            .and_then(|c| opt(c, "title"))
-            .or_else(|| opt(v, "case_title")),
+        case_title: v.get("case").and_then(|c| opt(c, "title")).or_else(|| opt(v, "case_title")),
         assigned_to_id: id_of(v, "assigned_to_id"),
         start_date: opt(v, "start_date"),
         due_date: opt(v, "due_date"),
@@ -619,27 +562,17 @@ pub async fn tasks_assigned_to(
     let v = sess.get_json(&path).await?;
     let items = list(&v, "tasks", task_from);
     let (total, has_next) = pagination(&v, items.len());
-    Ok(Page {
-        items,
-        total,
-        has_next,
-    })
+    Ok(Page { items, total, has_next })
 }
 
 /// Atajo: tareas abiertas (`pending`, `in_progress`) del usuario.
 pub async fn my_open_tasks(sess: &Session, user_id: &str, limit: u32) -> Result<Vec<Task>> {
-    Ok(
-        tasks_assigned_to(sess, user_id, &["pending", "in_progress"], 1, limit)
-            .await?
-            .items,
-    )
+    Ok(tasks_assigned_to(sess, user_id, &["pending", "in_progress"], 1, limit).await?.items)
 }
 
 /// `GET /api/tasks/<id>`.
 pub async fn task(sess: &Session, id: &str) -> Result<Task> {
-    let v = sess
-        .get_json(&format!("/api/tasks/{}", urlencode(id)))
-        .await?;
+    let v = sess.get_json(&format!("/api/tasks/{}", urlencode(id))).await?;
     Ok(task_from(&v["task"]))
 }
 
@@ -675,10 +608,7 @@ fn task_body(t: &TaskInput) -> Value {
 /// `POST /api/tasks` (título obligatorio). Para que sea «mía», pon `assigned_to_id`.
 pub async fn create_task(sess: &Session, t: &TaskInput) -> Result<Task> {
     if t.title.as_deref().map_or(true, |x| x.trim().is_empty()) {
-        return Err(anyhow!(lang::pick(
-            "A task needs a title",
-            "Una tarea necesita título"
-        )));
+        return Err(anyhow!(lang::pick("A task needs a title", "Una tarea necesita título")));
     }
     let v = sess.post_json("/api/tasks", &task_body(t)).await?;
     Ok(task_from(v.get("task").unwrap_or(&v)))
@@ -686,24 +616,14 @@ pub async fn create_task(sess: &Session, t: &TaskInput) -> Result<Task> {
 
 /// `PUT /api/tasks/<id>` (sólo los campos `Some`).
 pub async fn update_task(sess: &Session, id: &str, t: &TaskInput) -> Result<Task> {
-    let v = sess
-        .put_json(&format!("/api/tasks/{}", urlencode(id)), &task_body(t))
-        .await?;
+    let v = sess.put_json(&format!("/api/tasks/{}", urlencode(id)), &task_body(t)).await?;
     Ok(task_from(v.get("task").unwrap_or(&v)))
 }
 
 /// Marca una tarea como completada (o la reabre como `pending`).
 pub async fn set_task_done(sess: &Session, id: &str, done: bool) -> Result<Task> {
     let status = if done { "completed" } else { "pending" };
-    update_task(
-        sess,
-        id,
-        &TaskInput {
-            status: Some(status.into()),
-            ..Default::default()
-        },
-    )
-    .await
+    update_task(sess, id, &TaskInput { status: Some(status.into()), ..Default::default() }).await
 }
 
 // ---------------------------------------------------------------------------
@@ -741,37 +661,21 @@ pub(crate) fn notification_from(v: &Value) -> Notification {
 }
 
 /// `GET /api/notifications?unread_only=&limit=`. Devuelve los avisos y el total sin leer.
-pub async fn notifications(
-    sess: &Session,
-    unread_only: bool,
-    limit: u32,
-) -> Result<(Vec<Notification>, u64)> {
-    let v = sess
-        .get_json(&format!(
-            "/api/notifications?unread_only={unread_only}&limit={}",
-            limit.clamp(1, 200)
-        ))
-        .await?;
-    Ok((
-        list(&v, "notifications", notification_from),
-        v["unread_count"].as_u64().unwrap_or(0),
-    ))
+pub async fn notifications(sess: &Session, unread_only: bool, limit: u32) -> Result<(Vec<Notification>, u64)> {
+    let v =
+        sess.get_json(&format!("/api/notifications?unread_only={unread_only}&limit={}", limit.clamp(1, 200))).await?;
+    Ok((list(&v, "notifications", notification_from), v["unread_count"].as_u64().unwrap_or(0)))
 }
 
 /// `PUT /api/notifications/<id>/read`.
 pub async fn mark_notification_read(sess: &Session, id: &str) -> Result<()> {
-    sess.put_json(
-        &format!("/api/notifications/{}/read", urlencode(id)),
-        &json!({}),
-    )
-    .await?;
+    sess.put_json(&format!("/api/notifications/{}/read", urlencode(id)), &json!({})).await?;
     Ok(())
 }
 
 /// `PUT /api/notifications/mark-all-read`.
 pub async fn mark_all_notifications_read(sess: &Session) -> Result<()> {
-    sess.put_json("/api/notifications/mark-all-read", &json!({}))
-        .await?;
+    sess.put_json("/api/notifications/mark-all-read", &json!({})).await?;
     Ok(())
 }
 
@@ -814,12 +718,7 @@ pub(crate) fn comment_from(v: &Value) -> Comment {
 }
 
 /// `GET /api/plugins/collab/entities/<tipo>/<id>/comments?page=&per_page=` (más viejos primero).
-pub async fn comments(
-    sess: &Session,
-    target_type: &str,
-    target_id: &str,
-    page: u32,
-) -> Result<Page<Comment>> {
+pub async fn comments(sess: &Session, target_type: &str, target_id: &str, page: u32) -> Result<Page<Comment>> {
     let v = sess
         .get_json(&format!(
             "/api/plugins/collab/entities/{}/{}/comments?page={}&per_page=100",
@@ -832,11 +731,7 @@ pub async fn comments(
     let p = &v["pagination"];
     let total = p["total"].as_u64().unwrap_or(items.len() as u64);
     let has_next = p["page"].as_u64().unwrap_or(1) < p["total_pages"].as_u64().unwrap_or(1);
-    Ok(Page {
-        items,
-        total,
-        has_next,
-    })
+    Ok(Page { items, total, has_next })
 }
 
 /// `POST /api/plugins/collab/entities/<tipo>/<id>/comments` (Markdown; `@` para mencionar).
@@ -853,11 +748,7 @@ pub async fn add_comment(
     }
     let v = sess
         .post_json(
-            &format!(
-                "/api/plugins/collab/entities/{}/{}/comments",
-                urlencode(target_type),
-                urlencode(target_id)
-            ),
+            &format!("/api/plugins/collab/entities/{}/{}/comments", urlencode(target_type), urlencode(target_id)),
             &body,
         )
         .await?;
@@ -891,21 +782,14 @@ pub(crate) fn mention_from(v: &Value) -> Mention {
 /// `GET /api/plugins/collab/mentions?unread=&limit=`: dónde me mencionaron.
 pub async fn mentions(sess: &Session, unread_only: bool, limit: u32) -> Result<Vec<Mention>> {
     let v = sess
-        .get_json(&format!(
-            "/api/plugins/collab/mentions?unread={unread_only}&limit={}",
-            limit.clamp(1, 200)
-        ))
+        .get_json(&format!("/api/plugins/collab/mentions?unread={unread_only}&limit={}", limit.clamp(1, 200)))
         .await?;
     Ok(list(&v, "mentions", mention_from))
 }
 
 /// `POST /api/plugins/collab/mentions/<id>/read`.
 pub async fn mark_mention_read(sess: &Session, id: &str) -> Result<()> {
-    sess.post_json(
-        &format!("/api/plugins/collab/mentions/{}/read", urlencode(id)),
-        &json!({}),
-    )
-    .await?;
+    sess.post_json(&format!("/api/plugins/collab/mentions/{}/read", urlencode(id)), &json!({})).await?;
     Ok(())
 }
 
@@ -984,9 +868,7 @@ pub(crate) fn ticket_from(v: &Value) -> Ticket {
             content: s(c, "content"),
             is_internal: b(c, "is_internal"),
             source: opt(c, "source"),
-            author: opt(c, "user_name")
-                .or_else(|| opt(c, "sender_name"))
-                .or_else(|| opt(c, "sender_email")),
+            author: opt(c, "user_name").or_else(|| opt(c, "sender_name")).or_else(|| opt(c, "sender_email")),
             created_at: opt(c, "created_at"),
         }),
     }
@@ -1007,17 +889,10 @@ pub struct TicketQuery {
 
 /// `GET /api/plugins/tickets?…` (más recientes primero).
 pub async fn tickets(sess: &Session, q: &TicketQuery) -> Result<Page<Ticket>> {
-    let mut path = format!(
-        "/api/plugins/tickets?page={}&per_page={}",
-        q.page.max(1),
-        q.per_page.clamp(1, 100)
-    );
-    for (k, v) in [
-        ("status", &q.status),
-        ("search", &q.search),
-        ("case_id", &q.case_id),
-        ("assigned_to", &q.assigned_to),
-    ] {
+    let mut path = format!("/api/plugins/tickets?page={}&per_page={}", q.page.max(1), q.per_page.clamp(1, 100));
+    for (k, v) in
+        [("status", &q.status), ("search", &q.search), ("case_id", &q.case_id), ("assigned_to", &q.assigned_to)]
+    {
         if let Some(x) = v.as_deref().map(str::trim).filter(|x| !x.is_empty()) {
             path.push_str(&format!("&{k}={}", urlencode(x)));
         }
@@ -1028,18 +903,12 @@ pub async fn tickets(sess: &Session, q: &TicketQuery) -> Result<Page<Ticket>> {
     let v = sess.get_json(&path).await?;
     let items = list(&v, "tickets", ticket_from);
     let (total, has_next) = pagination(&v, items.len());
-    Ok(Page {
-        items,
-        total,
-        has_next,
-    })
+    Ok(Page { items, total, has_next })
 }
 
 /// `GET /api/plugins/tickets/<id>` (con comentarios).
 pub async fn ticket(sess: &Session, id: &str) -> Result<Ticket> {
-    let v = sess
-        .get_json(&format!("/api/plugins/tickets/{}", urlencode(id)))
-        .await?;
+    let v = sess.get_json(&format!("/api/plugins/tickets/{}", urlencode(id))).await?;
     Ok(ticket_from(&v["ticket"]))
 }
 
@@ -1065,10 +934,7 @@ pub struct NewTicket {
 /// `POST /api/plugins/tickets` (con `source: "api"`).
 pub async fn create_ticket(sess: &Session, t: &NewTicket) -> Result<Ticket> {
     if t.title.trim().is_empty() {
-        return Err(anyhow!(lang::pick(
-            "A ticket needs a title",
-            "Un ticket necesita título"
-        )));
+        return Err(anyhow!(lang::pick("A ticket needs a title", "Un ticket necesita título")));
     }
     let mut m = Map::new();
     m.insert("title".into(), json!(t.title));
@@ -1084,32 +950,20 @@ pub async fn create_ticket(sess: &Session, t: &NewTicket) -> Result<Ticket> {
     if !t.tags.is_empty() {
         m.insert("tags".into(), json!(t.tags));
     }
-    let v = sess
-        .post_json("/api/plugins/tickets", &Value::Object(m))
-        .await?;
+    let v = sess.post_json("/api/plugins/tickets", &Value::Object(m)).await?;
     Ok(ticket_from(&v["ticket"]))
 }
 
 /// `PUT /api/plugins/tickets/<id>` con un cambio de estado (`resolved`, `waiting`…).
 /// Los tickets tipificados pueden rechazar la transición: el error trae el motivo.
 pub async fn set_ticket_status(sess: &Session, id: &str, status: &str) -> Result<Ticket> {
-    let v = sess
-        .put_json(
-            &format!("/api/plugins/tickets/{}", urlencode(id)),
-            &json!({"status": status}),
-        )
-        .await?;
+    let v = sess.put_json(&format!("/api/plugins/tickets/{}", urlencode(id)), &json!({"status": status})).await?;
     Ok(ticket_from(&v["ticket"]))
 }
 
 /// `POST /api/plugins/tickets/<id>/comments`. `internal = true` → nota interna (el
 /// solicitante no la ve). Un comentario público reabre un ticket resuelto.
-pub async fn ticket_comment(
-    sess: &Session,
-    id: &str,
-    content: &str,
-    internal: bool,
-) -> Result<TicketComment> {
+pub async fn ticket_comment(sess: &Session, id: &str, content: &str, internal: bool) -> Result<TicketComment> {
     let v = sess
         .post_json(
             &format!("/api/plugins/tickets/{}/comments", urlencode(id)),
@@ -1129,22 +983,12 @@ pub async fn ticket_comment(
 
 /// `POST /api/plugins/tickets/<id>/documents`: vincula un documento ya subido
 /// (p. ej. el correo exportado con [`crate::api::upload_document`]).
-pub async fn ticket_attach_document(
-    sess: &Session,
-    id: &str,
-    document_id: &str,
-    notes: Option<&str>,
-) -> Result<()> {
+pub async fn ticket_attach_document(sess: &Session, id: &str, document_id: &str, notes: Option<&str>) -> Result<()> {
     let mut body = json!({"document_id": document_id});
     if let Some(n) = notes {
         body["notes"] = json!(n);
     }
-    sess.post_json(
-        &format!("/api/plugins/tickets/{}/documents", urlencode(id)),
-        &body,
-    )
-    .await
-    .map_err(|e| {
+    sess.post_json(&format!("/api/plugins/tickets/{}/documents", urlencode(id)), &body).await.map_err(|e| {
         if e.to_string().starts_with("409") {
             anyhow!(lang::pick(
                 "That document is already linked to the ticket",
@@ -1188,12 +1032,8 @@ pub struct CrmPerson {
 }
 
 pub(crate) fn crm_person_from(v: &Value) -> CrmPerson {
-    let nonempty = |ks: &[&str]| {
-        ks.iter()
-            .filter_map(|k| opt(v, k))
-            .filter(|x| !x.trim().is_empty())
-            .collect::<Vec<_>>()
-    };
+    let nonempty =
+        |ks: &[&str]| ks.iter().filter_map(|k| opt(v, k)).filter(|x| !x.trim().is_empty()).collect::<Vec<_>>();
     CrmPerson {
         id: id_of(v, "id").unwrap_or_default(),
         lead_type: opt(v, "lead_type").unwrap_or_else(|| "person".into()),
@@ -1219,12 +1059,7 @@ pub(crate) fn crm_person_from(v: &Value) -> CrmPerson {
 
 /// `GET /api/plugins/crm/leads?search=&limit=&offset=` con todos sus datos de contacto
 /// (`limit` máx. 500). `search` busca en nombre, empresa y correo.
-pub async fn crm_people(
-    sess: &Session,
-    search: Option<&str>,
-    limit: u32,
-    offset: u32,
-) -> Result<Page<CrmPerson>> {
+pub async fn crm_people(sess: &Session, search: Option<&str>, limit: u32, offset: u32) -> Result<Page<CrmPerson>> {
     let limit = limit.clamp(1, 500);
     let mut path = format!("/api/plugins/crm/leads?limit={limit}&offset={offset}");
     if let Some(q) = search.map(str::trim).filter(|q| !q.is_empty()) {
@@ -1234,11 +1069,7 @@ pub async fn crm_people(
     let items = list(&v, "items", crm_person_from);
     let total = v["total"].as_u64().unwrap_or(items.len() as u64);
     let has_next = (offset as u64).saturating_add(items.len() as u64) < total;
-    Ok(Page {
-        items,
-        total,
-        has_next,
-    })
+    Ok(Page { items, total, has_next })
 }
 
 /// Datos para crear un lead desde un correo.
@@ -1257,10 +1088,7 @@ pub struct NewLead {
 /// `POST /api/plugins/crm/leads` (`source: "manual"`). 409 si ya hay un lead con ese correo.
 pub async fn crm_create_lead(sess: &Session, l: &NewLead) -> Result<CrmPerson> {
     if l.name.trim().is_empty() {
-        return Err(anyhow!(lang::pick(
-            "A lead needs a name",
-            "Un lead necesita nombre"
-        )));
+        return Err(anyhow!(lang::pick("A lead needs a name", "Un lead necesita nombre")));
     }
     let mut m = Map::new();
     m.insert("name".into(), json!(l.name));
@@ -1272,10 +1100,7 @@ pub async fn crm_create_lead(sess: &Session, l: &NewLead) -> Result<CrmPerson> {
     put_opt(&mut m, "phone", &l.phone);
     put_opt(&mut m, "position", &l.position);
     put_opt(&mut m, "notes", &l.notes);
-    let v = sess
-        .post_json("/api/plugins/crm/leads", &Value::Object(m))
-        .await
-        .map_err(map_duplicate)?;
+    let v = sess.post_json("/api/plugins/crm/leads", &Value::Object(m)).await.map_err(map_duplicate)?;
     Ok(crm_person_from(&v))
 }
 
@@ -1305,22 +1130,13 @@ pub(crate) fn crm_activity_from(v: &Value) -> CrmActivity {
 }
 
 /// `GET /api/plugins/crm/activities?{lead_id|opportunity_id}=`: historia del lead u oportunidad.
-pub async fn crm_activities(
-    sess: &Session,
-    kind: CrmKind,
-    id: &str,
-    limit: u32,
-) -> Result<Vec<CrmActivity>> {
+pub async fn crm_activities(sess: &Session, kind: CrmKind, id: &str, limit: u32) -> Result<Vec<CrmActivity>> {
     let key = match kind {
         CrmKind::Lead => "lead_id",
         CrmKind::Opportunity => "opportunity_id",
     };
     let v = sess
-        .get_json(&format!(
-            "/api/plugins/crm/activities?{key}={}&limit={}",
-            urlencode(id),
-            limit.clamp(1, 500)
-        ))
+        .get_json(&format!("/api/plugins/crm/activities?{key}={}&limit={}", urlencode(id), limit.clamp(1, 500)))
         .await?;
     Ok(list(&v, "items", crm_activity_from))
 }
@@ -1364,22 +1180,13 @@ pub(crate) fn crm_email_from(v: &Value) -> CrmEmail {
 }
 
 /// `GET /api/plugins/crm/emails?{lead_id|opportunity_id}=`: correos ya archivados en la venta.
-pub async fn crm_emails(
-    sess: &Session,
-    kind: CrmKind,
-    id: &str,
-    limit: u32,
-) -> Result<Vec<CrmEmail>> {
+pub async fn crm_emails(sess: &Session, kind: CrmKind, id: &str, limit: u32) -> Result<Vec<CrmEmail>> {
     let key = match kind {
         CrmKind::Lead => "lead_id",
         CrmKind::Opportunity => "opportunity_id",
     };
     let v = sess
-        .get_json(&format!(
-            "/api/plugins/crm/emails?{key}={}&limit={}",
-            urlencode(id),
-            limit.clamp(1, 200)
-        ))
+        .get_json(&format!("/api/plugins/crm/emails?{key}={}&limit={}", urlencode(id), limit.clamp(1, 200)))
         .await?;
     Ok(list(&v, "items", crm_email_from))
 }
@@ -1395,25 +1202,13 @@ pub struct CrmReplyAddress {
 }
 
 /// `GET /api/plugins/crm/opportunities/<id>/reply-address`.
-pub async fn crm_reply_address(
-    sess: &Session,
-    opportunity_id: &str,
-) -> Result<Option<CrmReplyAddress>> {
-    let v = sess
-        .get_json(&format!(
-            "/api/plugins/crm/opportunities/{}/reply-address",
-            urlencode(opportunity_id)
-        ))
-        .await?;
+pub async fn crm_reply_address(sess: &Session, opportunity_id: &str) -> Result<Option<CrmReplyAddress>> {
+    let v =
+        sess.get_json(&format!("/api/plugins/crm/opportunities/{}/reply-address", urlencode(opportunity_id))).await?;
     if !b(&v, "configured") {
         return Ok(None);
     }
-    Ok(opt(&v, "reply_to")
-        .filter(|r| !r.is_empty())
-        .map(|reply_to| CrmReplyAddress {
-            reply_to,
-            bcc: opt(&v, "bcc"),
-        }))
+    Ok(opt(&v, "reply_to").filter(|r| !r.is_empty()).map(|reply_to| CrmReplyAddress { reply_to, bcc: opt(&v, "bcc") }))
 }
 
 // ---------------------------------------------------------------------------
@@ -1435,18 +1230,12 @@ fn map_ai_error(e: anyhow::Error) -> anyhow::Error {
 /// `POST /api/cases/<id>/ai-summary`: resumen del caso (tareas, plazos, avance, recomendaciones).
 pub async fn case_ai_summary(sess: &Session, case_id: &str) -> Result<String> {
     let v = sess
-        .post_json(
-            &format!("/api/cases/{}/ai-summary", urlencode(case_id)),
-            &json!({}),
-        )
+        .post_json(&format!("/api/cases/{}/ai-summary", urlencode(case_id)), &json!({}))
         .await
         .map_err(map_ai_error)?;
     let t = s(&v, "summary").trim().to_string();
     if t.is_empty() {
-        return Err(anyhow!(lang::pick(
-            "The instance returned no summary",
-            "La instancia no devolvió resumen"
-        )));
+        return Err(anyhow!(lang::pick("The instance returned no summary", "La instancia no devolvió resumen")));
     }
     Ok(t)
 }
@@ -1459,10 +1248,7 @@ pub async fn crm_extract_leads(sess: &Session, text: &str) -> Result<Vec<CrmPers
         return Ok(vec![]);
     }
     let v = sess
-        .post_json(
-            "/api/plugins/crm/extract",
-            &json!({"text": text, "persist": false}),
-        )
+        .post_json("/api/plugins/crm/extract", &json!({"text": text, "persist": false}))
         .await
         .map_err(map_ai_error)?;
     Ok(list(&v, "preview", crm_person_from))
@@ -1497,11 +1283,8 @@ mod tests {
 
     #[test]
     fn cuerpo_de_evento_solo_lleva_lo_que_cambia() {
-        let body = event_body(&EventInput {
-            title: Some("x".into()),
-            case_id: Some(String::new()),
-            ..Default::default()
-        });
+        let body =
+            event_body(&EventInput { title: Some("x".into()), case_id: Some(String::new()), ..Default::default() });
         let m = body.as_object().unwrap();
         assert_eq!(m.len(), 2);
         assert_eq!(m["case_id"], Value::Null);
@@ -1552,9 +1335,7 @@ mod tests {
 
     #[test]
     fn aviso_lee_ambas_banderas() {
-        let n = notification_from(
-            &json!({"id": "n1", "type": "task_assigned", "title": "Nueva tarea", "read": true}),
-        );
+        let n = notification_from(&json!({"id": "n1", "type": "task_assigned", "title": "Nueva tarea", "read": true}));
         assert!(n.is_read);
         assert_eq!(n.kind, "task_assigned");
     }
@@ -1566,9 +1347,7 @@ mod tests {
         );
         assert!(c.content.is_none());
         assert_eq!(c.reply_count, 2);
-        let m = mention_from(
-            &json!({"id": "x", "target_type": "lead", "target_id": "l1", "is_read": false}),
-        );
+        let m = mention_from(&json!({"id": "x", "target_type": "lead", "target_id": "l1", "is_read": false}));
         assert_eq!(m.target_type, "lead");
     }
 

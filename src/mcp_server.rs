@@ -136,7 +136,8 @@ struct Server<H> {
 
 /// Atiende stdin hasta que el cliente lo cierra. Devuelve el código de salida.
 pub fn serve<H: Handler>(handler: H) -> i32 {
-    let server = Arc::new(Server { handler, out: Output(Mutex::new(std::io::stdout())), running: Mutex::new(HashMap::new()) });
+    let server =
+        Arc::new(Server { handler, out: Output(Mutex::new(std::io::stdout())), running: Mutex::new(HashMap::new()) });
     let stdin = std::io::stdin();
     for line in stdin.lock().lines() {
         let Ok(line) = line else { break };

@@ -93,8 +93,10 @@ pub const APPS: &[AppDef] = &[
     AppDef {
         id: AppId::Ocr,
         name: "IureOCR",
-        description_en: "Recognizes text in scans and photos on your computer and produces searchable PDFs ready for Iurefficient.",
-        description_es: "Reconoce el texto de escaneos y fotos en tu equipo y deja PDF buscables listos para Iurefficient.",
+        description_en:
+            "Recognizes text in scans and photos on your computer and produces searchable PDFs ready for Iurefficient.",
+        description_es:
+            "Reconoce el texto de escaneos y fotos en tu equipo y deja PDF buscables listos para Iurefficient.",
         repo: "ellaguno/iureocr",
         scheme: "iureocr",
         linux_bin: "iureocr",
@@ -207,7 +209,14 @@ pub async fn status(user_agent: &str) -> Vec<AppStatus> {
 /// instalada, devuelve error con la URL de descarga en el mensaje.
 pub fn launch(id: AppId, args: &[String]) -> Result<()> {
     let app = def(id);
-    let path = locate(app).ok_or_else(|| anyhow!(tr!("{} is not installed. Download it from {}", "{} no está instalada. Descárgala en {}", app.name, download_url(app))))?;
+    let path = locate(app).ok_or_else(|| {
+        anyhow!(tr!(
+            "{} is not installed. Download it from {}",
+            "{} no está instalada. Descárgala en {}",
+            app.name,
+            download_url(app)
+        ))
+    })?;
     if cfg!(target_os = "macos") {
         let mut c = Command::new("open");
         c.arg("-a").arg(&path);
@@ -228,7 +237,6 @@ pub fn launch(id: AppId, args: &[String]) -> Result<()> {
 pub fn open_with(id: AppId, file: &Path) -> Result<()> {
     launch(id, &[file.to_string_lossy().into_owned()])
 }
-
 
 /// Perfil de IureDav (unidad WebDAV montada) tal como lo guarda `perfiles.json`.
 #[derive(Debug, Clone, Serialize)]

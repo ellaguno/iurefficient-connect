@@ -30,7 +30,10 @@ pub struct WebDav {
 impl WebDav {
     pub fn new(acc: Account, password: &str, user_agent: &str) -> Result<Self> {
         if password.trim().is_empty() {
-            return Err(anyhow!(lang::pick("The app password (iurdav_…) is missing", "Falta la contraseña de aplicación (iurdav_…)")));
+            return Err(anyhow!(lang::pick(
+                "The app password (iurdav_…) is missing",
+                "Falta la contraseña de aplicación (iurdav_…)"
+            )));
         }
         Ok(Self { acc, password: password.trim().to_string(), user_agent: user_agent.to_string() })
     }
@@ -38,7 +41,8 @@ impl WebDav {
     fn webdav_url(&self, folder: &str) -> Result<Url> {
         let mut u = self.acc.base.join("webdav/")?;
         {
-            let mut segs = u.path_segments_mut().map_err(|_| anyhow!(lang::pick("Invalid base URL", "URL base no válida")))?;
+            let mut segs =
+                u.path_segments_mut().map_err(|_| anyhow!(lang::pick("Invalid base URL", "URL base no válida")))?;
             segs.pop_if_empty();
             for part in folder.split('/').filter(|p| !p.is_empty()) {
                 segs.push(part);
@@ -51,7 +55,8 @@ impl WebDav {
     fn file_url(&self, folder: &str, file_name: &str) -> Result<Url> {
         let mut u = self.acc.base.join("webdav/")?;
         {
-            let mut segs = u.path_segments_mut().map_err(|_| anyhow!(lang::pick("Invalid base URL", "URL base no válida")))?;
+            let mut segs =
+                u.path_segments_mut().map_err(|_| anyhow!(lang::pick("Invalid base URL", "URL base no válida")))?;
             segs.pop_if_empty();
             for part in folder.split('/').filter(|p| !p.is_empty()) {
                 segs.push(part);
@@ -130,34 +135,35 @@ fn explain_status(status: StatusCode) -> String {
 }
 
 impl WebDav {
-/// PROPFIND profundidad 1 sobre una carpeta.
-pub async fn list(&self, folder: &str) -> Result<Listing> {
-    let client = self.http()?;
-    let url = self.webdav_url(folder)?;
-    let body = r#"<?xml version="1.0" encoding="utf-8"?>
+    /// PROPFIND profundidad 1 sobre una carpeta.
+    pub async fn list(&self, folder: &str) -> Result<Listing> {
+        let client = self.http()?;
+        let url = self.webdav_url(folder)?;
+        let body = r#"<?xml version="1.0" encoding="utf-8"?>
 <d:propfind xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">
   <d:prop><d:displayname/><d:resourcetype/><d:getcontentlength/><oc:permissions/></d:prop>
 </d:propfind>"#;
-    let resp = client
-        .request(Method::from_bytes(b"PROPFIND").unwrap(), url.clone())
-        .basic_auth(&self.acc.email, Some(&self.password))
-        .header("Depth", "1")
-        .header("Content-Type", "application/xml; charset=utf-8")
-        .body(body)
-        .send()
-        .await
-        .with_context(|| tr!("Could not connect to {}", "No se pudo conectar con {}", self.acc.base))?;
-    let status = resp.status();
-    if !(status.is_success() || status == StatusCode::MULTI_STATUS) {
-        return Err(anyhow!(explain_status(status)));
+        let resp = client
+            .request(Method::from_bytes(b"PROPFIND").unwrap(), url.clone())
+            .basic_auth(&self.acc.email, Some(&self.password))
+            .header("Depth", "1")
+            .header("Content-Type", "application/xml; charset=utf-8")
+            .body(body)
+            .send()
+            .await
+            .with_context(|| tr!("Could not connect to {}", "No se pudo conectar con {}", self.acc.base))?;
+        let status = resp.status();
+        if !(status.is_success() || status == StatusCode::MULTI_STATUS) {
+            return Err(anyhow!(explain_status(status)));
+        }
+        let xml = resp.text().await?;
+        parse_multistatus(&xml, folder, url.path())
     }
-    let xml = resp.text().await?;
-    parse_multistatus(&xml, folder, url.path())
-}
 }
 
 fn parse_multistatus(xml: &str, folder: &str, self_path: &str) -> Result<Listing> {
-    let doc = roxmltree::Document::parse(xml).map_err(|e| anyhow!(tr!("Invalid WebDAV response: {e}", "Respuesta WebDAV no válida: {e}")))?;
+    let doc = roxmltree::Document::parse(xml)
+        .map_err(|e| anyhow!(tr!("Invalid WebDAV response: {e}", "Respuesta WebDAV no válida: {e}")))?;
     let folder_norm = folder.trim_matches('/').to_string();
     let self_norm = percent_decode_str(self_path).decode_utf8_lossy().trim_end_matches('/').to_string();
     let mut entries = Vec::new();
@@ -171,9 +177,7 @@ fn parse_multistatus(xml: &str, folder: &str, self_path: &str) -> Result<Listing
             .trim()
             .to_string();
         let decoded = percent_decode_str(&href).decode_utf8_lossy().to_string();
-        let path_only = Url::parse(&decoded)
-            .map(|u| u.path().to_string())
-            .unwrap_or(decoded.clone());
+        let path_only = Url::parse(&decoded).map(|u| u.path().to_string()).unwrap_or(decoded.clone());
         let clean = path_only.trim_end_matches('/').to_string();
         let is_folder = response
             .descendants()
@@ -217,7 +221,8 @@ fn parse_multistatus(xml: &str, folder: &str, self_path: &str) -> Result<Listing
             size,
         });
     }
-    entries.sort_by(|a, b| b.is_folder.cmp(&a.is_folder).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase())));
+    entries
+        .sort_by(|a, b| b.is_folder.cmp(&a.is_folder).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase())));
     Ok(Listing { path: folder_norm, can_upload: self_can_upload, entries })
 }
 
@@ -252,42 +257,52 @@ fn content_type_for(path: &Path) -> &'static str {
 }
 
 impl WebDav {
-/// Sube un archivo local a `folder/<nombre>`. Un nombre existente crea una versión.
-/// `progress(bytes_enviados, total)` se llama conforme avanza la subida.
-pub async fn upload<F>(&self, folder: &str, local: &Path, remote_name: Option<&str>, mut progress: F) -> Result<Uploaded>
-where
-    F: FnMut(u64, u64) + Send + 'static,
-{
-    let name = remote_name
-        .map(str::to_string)
-        .or_else(|| local.file_name().map(|n| n.to_string_lossy().into_owned()))
-        .ok_or_else(|| anyhow!(lang::pick("Invalid file name", "Nombre de archivo no válido")))?;
-    let meta = tokio::fs::metadata(local).await.with_context(|| tr!("{} not found", "No se encontró {}", local.display()))?;
-    let total = meta.len();
-    let file = tokio::fs::File::open(local).await?;
-    let mut sent = 0u64;
-    let stream = futures_util::StreamExt::map(tokio_util_compat::ReaderStream::new(file), move |chunk| {
-        if let Ok(c) = &chunk {
-            sent += c.len() as u64;
-            progress(sent, total);
+    /// Sube un archivo local a `folder/<nombre>`. Un nombre existente crea una versión.
+    /// `progress(bytes_enviados, total)` se llama conforme avanza la subida.
+    pub async fn upload<F>(
+        &self,
+        folder: &str,
+        local: &Path,
+        remote_name: Option<&str>,
+        mut progress: F,
+    ) -> Result<Uploaded>
+    where
+        F: FnMut(u64, u64) + Send + 'static,
+    {
+        let name = remote_name
+            .map(str::to_string)
+            .or_else(|| local.file_name().map(|n| n.to_string_lossy().into_owned()))
+            .ok_or_else(|| anyhow!(lang::pick("Invalid file name", "Nombre de archivo no válido")))?;
+        let meta = tokio::fs::metadata(local)
+            .await
+            .with_context(|| tr!("{} not found", "No se encontró {}", local.display()))?;
+        let total = meta.len();
+        let file = tokio::fs::File::open(local).await?;
+        let mut sent = 0u64;
+        let stream = futures_util::StreamExt::map(tokio_util_compat::ReaderStream::new(file), move |chunk| {
+            if let Ok(c) = &chunk {
+                sent += c.len() as u64;
+                progress(sent, total);
+            }
+            chunk
+        });
+        let body = reqwest::Body::wrap_stream(stream);
+        let url = self.file_url(folder, &name)?;
+        let mtime =
+            meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs());
+        let client = self.http()?;
+        let mut req = client
+            .put(url.clone())
+            .basic_auth(&self.acc.email, Some(&self.password))
+            .header("Content-Type", content_type_for(local))
+            .header("Content-Length", total);
+        if let Some(m) = mtime {
+            req = req.header("X-OC-Mtime", m);
         }
-        chunk
-    });
-    let body = reqwest::Body::wrap_stream(stream);
-    let url = self.file_url(folder, &name)?;
-    let mtime = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs());
-    let client = self.http()?;
-    let mut req = client
-        .put(url.clone())
-        .basic_auth(&self.acc.email, Some(&self.password))
-        .header("Content-Type", content_type_for(local))
-        .header("Content-Length", total);
-    if let Some(m) = mtime {
-        req = req.header("X-OC-Mtime", m);
-    }
-    let resp = req.body(body).send().await.with_context(|| tr!("Could not upload {name}", "No se pudo subir {name}"))?;
-    let status = resp.status();
-    match status {
+        let resp =
+            req.body(body).send().await.with_context(|| tr!("Could not upload {name}", "No se pudo subir {name}"))?;
+        let status = resp.status();
+        match status {
         StatusCode::CREATED | StatusCode::OK | StatusCode::NO_CONTENT => Ok(Uploaded {
             file_name: name,
             remote_path: percent_decode_str(url.path()).decode_utf8_lossy().trim_start_matches("/webdav/").to_string(),
@@ -300,45 +315,45 @@ where
         ))),
         s => Err(anyhow!("{name}: {}", explain_status(s))),
     }
-}
-
-/// Sube y, si la instancia rechaza la extensión (403), reintenta con el nombre
-/// alternativo de [`fallback_name`]. Devuelve `renamed_from` cuando eso ocurre.
-pub async fn upload_with_fallback<F>(&self, folder: &str, local: &Path, progress: F) -> Result<Uploaded>
-where
-    F: FnMut(u64, u64) + Send + Clone + 'static,
-{
-    let name = local.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    match self.upload(folder, local, None, progress.clone()).await {
-        Ok(u) => Ok(u),
-        Err(e) if e.to_string().contains("403") => match fallback_name(&name) {
-            Some(alt) => {
-                let mut u = self.upload(folder, local, Some(&alt), progress).await?;
-                u.renamed_from = Some(name);
-                Ok(u)
-            }
-            None => Err(e),
-        },
-        Err(e) => Err(e),
     }
-}
 
-/// Descarga un archivo a una ruta local.
-pub async fn download(&self, remote_path: &str, local: &Path) -> Result<u64> {
-    let (folder, name) = match remote_path.trim_matches('/').rsplit_once('/') {
-        Some((f, n)) => (f, n),
-        None => ("", remote_path.trim_matches('/')),
-    };
-    let url = self.file_url(folder, name)?;
-    let resp = self.http()?.get(url).basic_auth(&self.acc.email, Some(&self.password)).send().await?;
-    let status = resp.status();
-    if !status.is_success() {
-        return Err(anyhow!("{name}: {}", explain_status(status)));
+    /// Sube y, si la instancia rechaza la extensión (403), reintenta con el nombre
+    /// alternativo de [`fallback_name`]. Devuelve `renamed_from` cuando eso ocurre.
+    pub async fn upload_with_fallback<F>(&self, folder: &str, local: &Path, progress: F) -> Result<Uploaded>
+    where
+        F: FnMut(u64, u64) + Send + Clone + 'static,
+    {
+        let name = local.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        match self.upload(folder, local, None, progress.clone()).await {
+            Ok(u) => Ok(u),
+            Err(e) if e.to_string().contains("403") => match fallback_name(&name) {
+                Some(alt) => {
+                    let mut u = self.upload(folder, local, Some(&alt), progress).await?;
+                    u.renamed_from = Some(name);
+                    Ok(u)
+                }
+                None => Err(e),
+            },
+            Err(e) => Err(e),
+        }
     }
-    let bytes = resp.bytes().await?;
-    tokio::fs::write(local, &bytes).await?;
-    Ok(bytes.len() as u64)
-}
+
+    /// Descarga un archivo a una ruta local.
+    pub async fn download(&self, remote_path: &str, local: &Path) -> Result<u64> {
+        let (folder, name) = match remote_path.trim_matches('/').rsplit_once('/') {
+            Some((f, n)) => (f, n),
+            None => ("", remote_path.trim_matches('/')),
+        };
+        let url = self.file_url(folder, name)?;
+        let resp = self.http()?.get(url).basic_auth(&self.acc.email, Some(&self.password)).send().await?;
+        let status = resp.status();
+        if !status.is_success() {
+            return Err(anyhow!("{name}: {}", explain_status(status)));
+        }
+        let bytes = resp.bytes().await?;
+        tokio::fs::write(local, &bytes).await?;
+        Ok(bytes.len() as u64)
+    }
 }
 
 /// Lector de archivo como flujo de bytes (evita depender de tokio-util completo).
@@ -398,7 +413,9 @@ mod tests {
     /// IURE_TEST_PASS; se omite si no están definidas.
     #[test]
     fn integration_list_and_upload() {
-        let (Ok(url), Ok(user), Ok(pass)) = (std::env::var("IURE_TEST_URL"), std::env::var("IURE_TEST_USER"), std::env::var("IURE_TEST_PASS")) else {
+        let (Ok(url), Ok(user), Ok(pass)) =
+            (std::env::var("IURE_TEST_URL"), std::env::var("IURE_TEST_USER"), std::env::var("IURE_TEST_PASS"))
+        else {
             return;
         };
         let rt = tokio::runtime::Runtime::new().unwrap();
@@ -426,21 +443,34 @@ mod tests {
             eprintln!("carpeta destino: {target}");
             let tmp = std::env::temp_dir().join("iuretranscribe-selftest.md");
             std::fs::write(&tmp, "# Prueba de IureTranscribe\n\nSubida automática de verificación.\n").unwrap();
-            let up = dav.upload(&target, &tmp, Some(".iuretranscribe-selftest.md"), |s, t| eprintln!("  {s}/{t}")).await.expect("subida");
+            let up = dav
+                .upload(&target, &tmp, Some(".iuretranscribe-selftest.md"), |s, t| eprintln!("  {s}/{t}"))
+                .await
+                .expect("subida");
             eprintln!("subido: {:?}", up);
             assert!(up.remote_path.ends_with(".iuretranscribe-selftest.md"));
             // Segunda subida con el mismo nombre → versión (204) o creación según el servidor.
-            let up2 = dav.upload(&target, &tmp, Some(".iuretranscribe-selftest.md"), |_, _| {}).await.expect("segunda subida");
+            let up2 = dav
+                .upload(&target, &tmp, Some(".iuretranscribe-selftest.md"), |_, _| {})
+                .await
+                .expect("segunda subida");
             eprintln!("segunda: created={}", up2.created);
         });
     }
 
     #[test]
     fn urls_webdav() {
-        let a = WebDav::new(Account::new("https://demo.iurefficient.com/webdav/", "a@b.c").unwrap(), "iurdav_x", "t/0").unwrap();
-        assert_eq!(a.webdav_url("Clientes/Acme S.A./Proyecto 1").unwrap().as_str(), "https://demo.iurefficient.com/webdav/Clientes/Acme%20S.A./Proyecto%201/");
+        let a = WebDav::new(Account::new("https://demo.iurefficient.com/webdav/", "a@b.c").unwrap(), "iurdav_x", "t/0")
+            .unwrap();
+        assert_eq!(
+            a.webdav_url("Clientes/Acme S.A./Proyecto 1").unwrap().as_str(),
+            "https://demo.iurefficient.com/webdav/Clientes/Acme%20S.A./Proyecto%201/"
+        );
         assert_eq!(a.webdav_url("").unwrap().as_str(), "https://demo.iurefficient.com/webdav/");
-        assert_eq!(a.file_url("General", "minuta ñ.md").unwrap().as_str(), "https://demo.iurefficient.com/webdav/General/minuta%20%C3%B1.md");
+        assert_eq!(
+            a.file_url("General", "minuta ñ.md").unwrap().as_str(),
+            "https://demo.iurefficient.com/webdav/General/minuta%20%C3%B1.md"
+        );
     }
 
     #[test]

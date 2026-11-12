@@ -118,8 +118,7 @@ impl Session {
             return;
         }
         if let Ok(json) = serde_json::to_string(&self.export()) {
-            if let Err(e) = crate::secrets::guardar(&self.acc, crate::secrets::Kind::Session, &json)
-            {
+            if let Err(e) = crate::secrets::guardar(&self.acc, crate::secrets::Kind::Session, &json) {
                 log::warn!("no se pudo guardar la sesión compartida: {e:#}");
             }
         }
@@ -155,8 +154,7 @@ impl Session {
                 continue;
             }
             let path = self.cookie_path(name);
-            self.jar
-                .add_cookie_str(&format!("{kv}; Path={path}; Secure; HttpOnly"), &self.acc.base);
+            self.jar.add_cookie_str(&format!("{kv}; Path={path}; Secure; HttpOnly"), &self.acc.base);
         }
     }
 
@@ -183,9 +181,7 @@ impl Session {
         // Desde la raíz sólo se verían las CSRF: el refresco vive en /api/auth/refresh.
         let hv = self.jar.cookies(&self.all_cookies_url()?)?;
         let s = hv.to_str().ok()?;
-        s.split(';')
-            .map(str::trim)
-            .find_map(|kv| kv.strip_prefix(&format!("{name}=")).map(str::to_string))
+        s.split(';').map(str::trim).find_map(|kv| kv.strip_prefix(&format!("{name}=")).map(str::to_string))
     }
 
     /// `true` si hay cookie de refresco (la sesión puede intentar renovarse).
@@ -199,12 +195,7 @@ impl Session {
             .all_cookies_url()
             .and_then(|u| self.jar.cookies(&u))
             .and_then(|hv| hv.to_str().ok().map(str::to_string))
-            .map(|s| {
-                s.split(';')
-                    .map(|kv| kv.trim().to_string())
-                    .filter(|kv| !kv.is_empty())
-                    .collect()
-            })
+            .map(|s| s.split(';').map(|kv| kv.trim().to_string()).filter(|kv| !kv.is_empty()).collect())
             .unwrap_or_default();
         SessionExport { cookies }
     }
@@ -229,10 +220,7 @@ impl Session {
         self.ensure_fresh().await?;
         let url = self.acc.api(path)?;
         let mut rb = self.http.request(method.clone(), url);
-        if matches!(
-            method,
-            Method::POST | Method::PUT | Method::PATCH | Method::DELETE
-        ) {
+        if matches!(method, Method::POST | Method::PUT | Method::PATCH | Method::DELETE) {
             if let Some(csrf) = self.cookie(CSRF_ACCESS_COOKIE) {
                 rb = rb.header(CSRF_HEADER, csrf);
             }
@@ -271,46 +259,35 @@ impl Session {
     /// `POST /api/auth/login`. Devuelve la sesión abierta o la petición de TOTP.
     /// `POST /api/auth/logout` (invalida el acceso y borra las cookies).
     pub async fn logout(&self) -> Result<()> {
-        let _ = self
-            .send(self.request(Method::POST, "/api/auth/logout").await?)
-            .await;
+        let _ = self.send(self.request(Method::POST, "/api/auth/logout").await?).await;
         Ok(())
     }
 
     pub async fn login(&self, password: &str) -> Result<Login> {
         let url = self.acc.api("/api/auth/login")?;
         let resp = self
-            .send(
-                self.http
-                    .post(url)
-                    .json(&serde_json::json!({"email": self.acc.email, "password": password})),
-            )
+            .send(self.http.post(url).json(&serde_json::json!({"email": self.acc.email, "password": password})))
             .await?;
         let status = resp.status();
         let body: Value = resp.json().await.unwrap_or(Value::Null);
         match status {
             StatusCode::OK => {
-                if body
-                    .get("requires_totp")
-                    .and_then(|b| b.as_bool())
-                    .unwrap_or(false)
-                {
-                    let t = body
-                        .get("totp_token")
-                        .and_then(|t| t.as_str())
-                        .unwrap_or_default()
-                        .to_string();
+                if body.get("requires_totp").and_then(|b| b.as_bool()).unwrap_or(false) {
+                    let t = body.get("totp_token").and_then(|t| t.as_str()).unwrap_or_default().to_string();
                     return Ok(Login::TotpRequired { totp_token: t });
                 }
                 *self.last_refresh.lock().await = Some(SystemTime::now());
                 self.push_shared();
                 Ok(Login::Ok(user_from(&body).unwrap_or_default()))
             }
-            StatusCode::UNAUTHORIZED => Err(anyhow!(lang::pick("Incorrect email or password", "Correo o contraseña incorrectos"))),
-            StatusCode::FORBIDDEN => Err(anyhow!(lang::pick("The account is disabled", "La cuenta está desactivada"))),
-            StatusCode::TOO_MANY_REQUESTS => {
-                Err(anyhow!(lang::pick("Too many attempts; wait a few minutes", "Demasiados intentos; espera unos minutos")))
+            StatusCode::UNAUTHORIZED => {
+                Err(anyhow!(lang::pick("Incorrect email or password", "Correo o contraseña incorrectos")))
             }
+            StatusCode::FORBIDDEN => Err(anyhow!(lang::pick("The account is disabled", "La cuenta está desactivada"))),
+            StatusCode::TOO_MANY_REQUESTS => Err(anyhow!(lang::pick(
+                "Too many attempts; wait a few minutes",
+                "Demasiados intentos; espera unos minutos"
+            ))),
             s => Err(anyhow!(tr!(
                 "The server responded {s}: {}",
                 "El servidor respondió {s}: {}",
@@ -323,11 +300,7 @@ impl Session {
     pub async fn verify_totp(&self, totp_token: &str, code: &str) -> Result<User> {
         let url = self.acc.api("/api/auth/verify-totp")?;
         let resp = self
-            .send(
-                self.http
-                    .post(url)
-                    .json(&serde_json::json!({"totp_token": totp_token, "code": code.trim()})),
-            )
+            .send(self.http.post(url).json(&serde_json::json!({"totp_token": totp_token, "code": code.trim()})))
             .await?;
         let status = resp.status();
         let body: Value = resp.json().await.unwrap_or(Value::Null);
@@ -356,7 +329,10 @@ impl Session {
                 self.push_shared();
                 Ok(())
             }
-            StatusCode::UNAUTHORIZED => Err(anyhow!(lang::pick("The session expired; sign in again", "La sesión caducó; vuelve a iniciar sesión"))),
+            StatusCode::UNAUTHORIZED => Err(anyhow!(lang::pick(
+                "The session expired; sign in again",
+                "La sesión caducó; vuelve a iniciar sesión"
+            ))),
             s => Err(anyhow!(tr!("Could not renew the session ({s})", "No se pudo renovar la sesión ({s})"))),
         }
     }
@@ -365,7 +341,10 @@ impl Session {
     pub async fn me(&self) -> Result<User> {
         let resp = self.send_retrying(Method::GET, "/api/auth/me", None).await?;
         if resp.status() == StatusCode::UNAUTHORIZED {
-            return Err(anyhow!(lang::pick("Invalid session; sign in again", "Sesión no válida; inicia sesión de nuevo")));
+            return Err(anyhow!(lang::pick(
+                "Invalid session; sign in again",
+                "Sesión no válida; inicia sesión de nuevo"
+            )));
         }
         let body: Value = resp.error_for_status()?.json().await?;
         Ok(user_from(&body).unwrap_or_default())
@@ -384,14 +363,8 @@ impl Session {
     }
 
     /// POST multipart (subida de archivos).
-    pub async fn post_multipart(
-        &self,
-        path: &str,
-        form: reqwest::multipart::Form,
-    ) -> Result<Value> {
-        let resp = self
-            .send(self.request(Method::POST, path).await?.multipart(form))
-            .await?;
+    pub async fn post_multipart(&self, path: &str, form: reqwest::multipart::Form) -> Result<Value> {
+        let resp = self.send(self.request(Method::POST, path).await?.multipart(form)).await?;
         json_or_error(resp).await
     }
 
@@ -431,15 +404,8 @@ pub struct ApiError {
 impl ApiError {
     /// Error con estado, código y mensaje (pruebas y adaptadores).
     pub fn new(status: u16, code: Option<&str>, message: &str) -> Self {
-        let status_line = StatusCode::from_u16(status)
-            .map(|s| s.to_string())
-            .unwrap_or_else(|_| status.to_string());
-        ApiError {
-            status,
-            code: code.map(str::to_string),
-            message: message.to_string(),
-            status_line,
-        }
+        let status_line = StatusCode::from_u16(status).map(|s| s.to_string()).unwrap_or_else(|_| status.to_string());
+        ApiError { status, code: code.map(str::to_string), message: message.to_string(), status_line }
     }
 
     /// `true` si la instancia exige aceptar los términos vigentes (403
@@ -478,12 +444,7 @@ pub(crate) fn api_error(status: StatusCode, text: &str) -> ApiError {
         .or_else(|| body.get("message").and_then(|e| e.as_str()))
         .map(str::to_string)
         .unwrap_or_else(|| text.chars().take(200).collect());
-    ApiError {
-        status: status.as_u16(),
-        code,
-        message,
-        status_line: status.to_string(),
-    }
+    ApiError { status: status.as_u16(), code, message, status_line: status.to_string() }
 }
 
 async fn json_or_error(resp: reqwest::Response) -> Result<Value> {
@@ -517,7 +478,8 @@ mod tests {
 
     #[test]
     fn errores_con_codigo() {
-        let e = api_error(StatusCode::FORBIDDEN, r#"{"code":"terms_acceptance_required","error":"Acepta los términos"}"#);
+        let e =
+            api_error(StatusCode::FORBIDDEN, r#"{"code":"terms_acceptance_required","error":"Acepta los términos"}"#);
         assert!(e.is_terms_required());
         assert_eq!(e.to_string(), "403 Forbidden: Acepta los términos");
         let e = api_error(StatusCode::CONFLICT, r#"{"error":{"code":"duplicate_email","message":"Ya existe"}}"#);
@@ -540,7 +502,8 @@ mod tests {
         let s = session();
         server_cookies(&s, "1");
         assert!(s.has_refresh());
-        let mut names: Vec<String> = s.export().cookies.iter().map(|c| c.split('=').next().unwrap().to_string()).collect();
+        let mut names: Vec<String> =
+            s.export().cookies.iter().map(|c| c.split('=').next().unwrap().to_string()).collect();
         names.sort();
         assert_eq!(names, ["access_token_cookie", "csrf_access_token", "csrf_refresh_token", "refresh_token_cookie"]);
     }

@@ -29,9 +29,13 @@ pub struct McpClient {
 impl McpClient {
     pub fn new(acc: Account, token: &str, user_agent: &str) -> Result<Self> {
         if !token.starts_with("iurmcp_") {
-            return Err(anyhow!(lang::pick("The MCP token must start with iurmcp_", "El token MCP debe empezar con iurmcp_")));
+            return Err(anyhow!(lang::pick(
+                "The MCP token must start with iurmcp_",
+                "El token MCP debe empezar con iurmcp_"
+            )));
         }
-        let http = reqwest::Client::builder().user_agent(user_agent).timeout(std::time::Duration::from_secs(60)).build()?;
+        let http =
+            reqwest::Client::builder().user_agent(user_agent).timeout(std::time::Duration::from_secs(60)).build()?;
         Ok(Self { acc, token: token.to_string(), http, seq: AtomicU64::new(1) })
     }
 
@@ -47,7 +51,9 @@ impl McpClient {
             .json(&json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params}))
             .send()
             .await
-            .with_context(|| lang::pick("Could not connect to the MCP server", "No se pudo conectar con el servidor MCP"))?;
+            .with_context(|| {
+                lang::pick("Could not connect to the MCP server", "No se pudo conectar con el servidor MCP")
+            })?;
         let status = resp.status();
         if status == reqwest::StatusCode::UNAUTHORIZED {
             return Err(anyhow!(lang::pick("MCP token rejected (401)", "Token MCP rechazado (401)")));
@@ -55,7 +61,8 @@ impl McpClient {
         if !status.is_success() {
             return Err(anyhow!(tr!("The MCP server responded {status}", "El servidor MCP respondió {status}")));
         }
-        let v: Value = resp.json().await.with_context(|| lang::pick("Invalid MCP response", "Respuesta MCP no válida"))?;
+        let v: Value =
+            resp.json().await.with_context(|| lang::pick("Invalid MCP response", "Respuesta MCP no válida"))?;
         if let Some(err) = v.get("error") {
             return Err(anyhow!("MCP: {}", err.get("message").and_then(|m| m.as_str()).unwrap_or("error")));
         }
@@ -81,7 +88,8 @@ impl McpClient {
     pub async fn call(&self, name: &str, arguments: Value) -> Result<Value> {
         let r = self.rpc("tools/call", json!({"name": name, "arguments": arguments})).await?;
         if r.get("isError").and_then(|b| b.as_bool()).unwrap_or(false) {
-            let msg = r["content"].as_array().and_then(|c| c.first()).and_then(|c| c["text"].as_str()).unwrap_or("error");
+            let msg =
+                r["content"].as_array().and_then(|c| c.first()).and_then(|c| c["text"].as_str()).unwrap_or("error");
             return Err(anyhow!("MCP {name}: {msg}"));
         }
         if let Some(sc) = r.get("structuredContent") {

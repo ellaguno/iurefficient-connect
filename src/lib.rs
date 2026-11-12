@@ -39,8 +39,5 @@ pub use account::{Account, ActiveAccount};
 
 /// Nombre de agente HTTP que envían las apps (cada una añade su nombre y versión).
 pub fn user_agent(app: &str, version: &str) -> String {
-    format!(
-        "{app}/{version} iurefficient-connect/{}",
-        env!("CARGO_PKG_VERSION")
-    )
+    format!("{app}/{version} iurefficient-connect/{}", env!("CARGO_PKG_VERSION"))
 }

@@ -27,12 +27,9 @@ impl Account {
                 "Indica el dominio de tu instancia (p. ej. 2.ds.iurefficient.com)"
             )));
         }
-        let with_scheme = if d.contains("://") {
-            d.to_string()
-        } else {
-            format!("https://{d}")
-        };
-        let mut base = Url::parse(&with_scheme).map_err(|e| anyhow!(tr!("Invalid domain: {e}", "Dominio no válido: {e}")))?;
+        let with_scheme = if d.contains("://") { d.to_string() } else { format!("https://{d}") };
+        let mut base =
+            Url::parse(&with_scheme).map_err(|e| anyhow!(tr!("Invalid domain: {e}", "Dominio no válido: {e}")))?;
         if base.host_str().is_none() {
             return Err(anyhow!(lang::pick("Invalid domain", "Dominio no válido")));
         }
@@ -114,20 +111,14 @@ pub fn active() -> Option<ActiveAccount> {
 
 /// Deja `acc` como cuenta activa para las demás apps. Se llama al iniciar sesión.
 pub fn set_active(acc: &Account, app: &str) -> Result<()> {
-    let path = active_path().ok_or_else(|| anyhow!(lang::pick("no configuration folder", "no hay carpeta de configuración")))?;
+    let path = active_path()
+        .ok_or_else(|| anyhow!(lang::pick("no configuration folder", "no hay carpeta de configuración")))?;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let updated_at = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let a = ActiveAccount {
-        domain: acc.host(),
-        email: acc.email.clone(),
-        app: app.to_string(),
-        updated_at,
-    };
+    let updated_at =
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let a = ActiveAccount { domain: acc.host(), email: acc.email.clone(), app: app.to_string(), updated_at };
     std::fs::write(&path, serde_json::to_string_pretty(&a)?)?;
     Ok(())
 }
@@ -165,22 +156,13 @@ mod tests {
         let json = serde_json::to_string(&a).unwrap();
         let b: ActiveAccount = serde_json::from_str(&json).unwrap();
         assert_eq!(a, b);
-        assert_eq!(
-            b.account().unwrap().web_url(),
-            "https://2.ds.iurefficient.com/"
-        );
+        assert_eq!(b.account().unwrap().web_url(), "https://2.ds.iurefficient.com/");
         // Campos nuevos opcionales: un archivo antiguo sin `app` sigue leyéndose.
-        let c: ActiveAccount =
-            serde_json::from_str(r#"{"domain":"x.com","email":"a@b.c"}"#).unwrap();
+        let c: ActiveAccount = serde_json::from_str(r#"{"domain":"x.com","email":"a@b.c"}"#).unwrap();
         assert_eq!(c.app, "");
-        assert!(ActiveAccount {
-            domain: String::new(),
-            email: "a@b.c".into(),
-            app: String::new(),
-            updated_at: 0
-        }
-        .account()
-        .is_err());
+        assert!(ActiveAccount { domain: String::new(), email: "a@b.c".into(), app: String::new(), updated_at: 0 }
+            .account()
+            .is_err());
     }
 
     #[test]
@@ -193,10 +175,7 @@ mod tests {
         assert_eq!(a.email, "a@b.c");
         let a = Account::new("http://127.0.0.1:8099", "a@b.c").unwrap();
         assert_eq!(a.host(), "127.0.0.1:8099");
-        assert_eq!(
-            a.api("/api/auth/me").unwrap().as_str(),
-            "http://127.0.0.1:8099/api/auth/me"
-        );
+        assert_eq!(a.api("/api/auth/me").unwrap().as_str(), "http://127.0.0.1:8099/api/auth/me");
         assert!(Account::new("", "a@b.c").is_err());
         assert!(Account::new("x.com", "").is_err());
     }

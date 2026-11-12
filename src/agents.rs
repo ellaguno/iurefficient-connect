@@ -195,19 +195,37 @@ fn claude_dirs() -> Vec<PathBuf> {
 pub fn claude_desktop_status(key: &str) -> Status {
     let dirs = claude_dirs();
     let Some(dir) = dirs.first() else {
-        return Status { installed: false, connected: false, stale: false, config_path: None, download_url: CLAUDE_DOWNLOAD_URL, copilot: None };
+        return Status {
+            installed: false,
+            connected: false,
+            stale: false,
+            config_path: None,
+            download_url: CLAUDE_DOWNLOAD_URL,
+            copilot: None,
+        };
     };
     let path = dir.join(CLAUDE_CONFIG_FILE);
-    let registered = read_object(&path).ok().and_then(|m| m.get("mcpServers")?.get(key)?.get("command")?.as_str().map(String::from));
+    let registered =
+        read_object(&path).ok().and_then(|m| m.get("mcpServers")?.get(key)?.get("command")?.as_str().map(String::from));
     let (connected, stale) = compare(registered);
-    Status { installed: true, connected, stale, config_path: Some(path.to_string_lossy().into_owned()), download_url: CLAUDE_DOWNLOAD_URL, copilot: None }
+    Status {
+        installed: true,
+        connected,
+        stale,
+        config_path: Some(path.to_string_lossy().into_owned()),
+        download_url: CLAUDE_DOWNLOAD_URL,
+        copilot: None,
+    }
 }
 
 /// Añade (o corrige) `mcpServers.<key>`. Devuelve en cuántos archivos se escribió.
 pub fn claude_desktop_connect(key: &str) -> Result<usize> {
     let dirs = claude_dirs();
     if dirs.is_empty() {
-        return Err(anyhow!(tr!("Claude Desktop was not found on this computer.", "No se encontró Claude Desktop en este equipo.")));
+        return Err(anyhow!(tr!(
+            "Claude Desktop was not found on this computer.",
+            "No se encontró Claude Desktop en este equipo."
+        )));
     }
     // Todo se valida antes de escribir nada: o se actualizan todas las copias o ninguna.
     let mut configs = Vec::new();
@@ -256,14 +274,25 @@ fn vscode_user_dir() -> Option<PathBuf> {
 fn vscode_has_copilot() -> bool {
     let Some(dir) = dirs::home_dir().map(|h| h.join(".vscode").join("extensions")) else { return false };
     std::fs::read_dir(dir)
-        .map(|entries| entries.flatten().any(|e| e.file_name().to_string_lossy().to_ascii_lowercase().starts_with("github.copilot")))
+        .map(|entries| {
+            entries
+                .flatten()
+                .any(|e| e.file_name().to_string_lossy().to_ascii_lowercase().starts_with("github.copilot"))
+        })
         .unwrap_or(false)
 }
 
 /// Estado en VS Code: se lee el `mcp.json` del usuario (clave `servers`).
 pub fn vscode_status(key: &str) -> Status {
     let Some(user) = vscode_user_dir() else {
-        return Status { installed: false, connected: false, stale: false, config_path: None, download_url: VSCODE_DOWNLOAD_URL, copilot: None };
+        return Status {
+            installed: false,
+            connected: false,
+            stale: false,
+            config_path: None,
+            download_url: VSCODE_DOWNLOAD_URL,
+            copilot: None,
+        };
     };
     let path = user.join("mcp.json");
     let registered = std::fs::read_to_string(&path)
@@ -330,7 +359,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join(CLAUDE_CONFIG_FILE);
-        std::fs::write(&path, r#"{"zPreferencia": true, "mcpServers": {"otro": {"command": "x"}}, "aOtra": 1}"#).unwrap();
+        std::fs::write(&path, r#"{"zPreferencia": true, "mcpServers": {"otro": {"command": "x"}}, "aOtra": 1}"#)
+            .unwrap();
 
         let mut config = read_object(&path).unwrap();
         config["mcpServers"]["iureocr"] = server_entry().unwrap();
@@ -389,7 +419,10 @@ mod tests {
         assert!(!vscode_status("iureocr").connected);
         std::fs::write(
             user.join("mcp.json"),
-            format!("{{\n  // mío\n  \"servers\": {{\"iureocr\": {{\"command\": {}, \"args\": [\"--mcp\"]}},}}\n}}", json!(command().unwrap())),
+            format!(
+                "{{\n  // mío\n  \"servers\": {{\"iureocr\": {{\"command\": {}, \"args\": [\"--mcp\"]}},}}\n}}",
+                json!(command().unwrap())
+            ),
         )
         .unwrap();
         assert!(vscode_status("iureocr").connected);
