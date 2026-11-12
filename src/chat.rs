@@ -61,6 +61,117 @@ pub async fn delete_conversation(sess: &Session, scope: Scope<'_>, conversation_
     }
 }
 
+/// Topes de lo que se lee de la instancia al listar.
+const MAX_CONVERSATIONS: usize = 500;
+const MAX_MESSAGES: usize = 1_000;
+const MAX_REFERENCES: usize = 100;
+const MAX_CONTENT: usize = 200_000;
+
+/// Una conversación del usuario (la instancia no devuelve las ajenas).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct Conversation {
+    pub id: String,
+    pub title: String,
+    pub message_count: u64,
+    /// Última actividad (ISO 8601, como la da la instancia); vacía si no viene.
+    pub updated_at: String,
+}
+
+/// Quién escribió un mensaje.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Role {
+    User,
+    Assistant,
+}
+
+/// Un mensaje guardado de una conversación.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct Message {
+    pub id: String,
+    pub role: Role,
+    /// En Markdown.
+    pub content: String,
+    pub references: Vec<Reference>,
+    pub model: Option<String>,
+    /// La instancia no pudo responder (`status` = `failed`): el motivo (vacío si no lo dio).
+    pub error: Option<String>,
+}
+
+/// Conversaciones del usuario en el alcance, la más reciente primero
+/// (`GET …/conversations`).
+pub async fn conversations(sess: &Session, scope: Scope<'_>) -> Result<Vec<Conversation>> {
+    let v = sess.get_json(&format!("{}/conversations", scope.base())).await?;
+    Ok(conversations_from(&v))
+}
+
+/// Mensajes de una conversación, del más viejo al más nuevo; si son muchos, los últimos
+/// (`GET …/messages?conversation_id=`). Siempre con conversación: sin ella la instancia
+/// devuelve todo el historial del usuario en el alcance.
+pub async fn messages(sess: &Session, scope: Scope<'_>, conversation_id: &str) -> Result<Vec<Message>> {
+    let id = percent_encoding::utf8_percent_encode(conversation_id, percent_encoding::NON_ALPHANUMERIC);
+    let v = sess.get_json(&format!("{}/messages?conversation_id={id}", scope.base())).await?;
+    Ok(messages_from(&v))
+}
+
+fn conversations_from(v: &Value) -> Vec<Conversation> {
+    v["conversations"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|c| !s(c, "id").is_empty())
+        .take(MAX_CONVERSATIONS)
+        .map(|c| Conversation {
+            id: s(c, "id"),
+            title: s(c, "title"),
+            message_count: c["message_count"].as_u64().unwrap_or(0),
+            updated_at: s(c, "updated_at"),
+        })
+        .collect()
+}
+
+fn messages_from(v: &Value) -> Vec<Message> {
+    let all: Vec<Message> = v["messages"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|m| {
+            let role = match m["role"].as_str() {
+                Some("user") => Role::User,
+                Some("assistant") => Role::Assistant,
+                _ => return None,
+            };
+            Some(Message {
+                id: s(m, "id"),
+                role,
+                content: s(m, "content").chars().take(MAX_CONTENT).collect(),
+                references: references_from(&m["references"]),
+                model: opt(m, "model"),
+                error: (m["status"].as_str() == Some("failed")).then(|| s(m, "error_message")),
+            })
+        })
+        .collect();
+    let skip = all.len().saturating_sub(MAX_MESSAGES);
+    all.into_iter().skip(skip).collect()
+}
+
+fn references_from(v: &Value) -> Vec<Reference> {
+    v.as_array()
+        .into_iter()
+        .flatten()
+        .take(MAX_REFERENCES)
+        .map(|r| Reference {
+            index: r["index"].as_u64().unwrap_or(0),
+            kind: s(r, "type"),
+            title: s(r, "title"),
+            excerpt: s(r, "excerpt"),
+            entity_id: opt(r, "entity_id"),
+        })
+        .collect()
+}
+
 /// Una pregunta al asistente.
 #[derive(Debug, Clone, Default)]
 pub struct Request<'a> {
@@ -104,20 +215,7 @@ fn answer_from(msg: &Value) -> Result<Answer> {
     if content.is_empty() {
         return Err(anyhow!(tr!("The instance returned no response", "La instancia no devolvió respuesta")));
     }
-    let references = msg["references"]
-        .as_array()
-        .map(|a| {
-            a.iter()
-                .map(|r| Reference {
-                    index: r["index"].as_u64().unwrap_or(0),
-                    kind: s(r, "type"),
-                    title: s(r, "title"),
-                    excerpt: s(r, "excerpt"),
-                    entity_id: opt(r, "entity_id"),
-                })
-                .collect()
-        })
-        .unwrap_or_default();
+    let references = references_from(&msg["references"]);
     Ok(Answer { content, references, model: opt(msg, "model"), message_id: s(msg, "id") })
 }
 
@@ -361,6 +459,47 @@ fn parse_event(raw: &str) -> Option<SseEvent> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn conversaciones_y_mensajes_como_los_da_la_instancia() {
+        let v = json!({ "conversations": [
+            { "id": "c1", "title": "Plazos", "message_count": 4, "updated_at": "2026-11-10T10:00:00Z" },
+            { "title": "sin id" },
+            { "id": "c2", "title": null }
+        ]});
+        let c = conversations_from(&v);
+        assert_eq!(c.len(), 2);
+        assert_eq!((c[0].title.as_str(), c[0].message_count), ("Plazos", 4));
+        assert_eq!(c[1].title, "");
+        assert!(conversations_from(&json!({ "error": "x" })).is_empty());
+
+        let v = json!({ "messages": [
+            { "id": "m1", "role": "user", "content": "¿Qué vence?" },
+            { "id": "m2", "role": "assistant", "content": "El escrito [1].", "model": "x",
+              "references": [{ "index": 1, "type": "document", "title": "Demanda", "excerpt": "…", "entity_id": "d9" }] },
+            { "id": "m3", "role": "system", "content": "interno" },
+            { "id": "m4", "role": "assistant", "content": "", "status": "failed", "error_message": "cuota" }
+        ]});
+        let m = messages_from(&v);
+        assert_eq!(m.len(), 3);
+        assert_eq!(m[0].role, Role::User);
+        assert_eq!(m[1].references[0].entity_id.as_deref(), Some("d9"));
+        assert_eq!(m[2].error.as_deref(), Some("cuota"));
+    }
+
+    #[test]
+    fn mensajes_hostiles_acotados() {
+        let many: Vec<Value> =
+            (0..MAX_MESSAGES + 50).map(|i| json!({ "id": i.to_string(), "role": "user", "content": "x" })).collect();
+        let m = messages_from(&json!({ "messages": many }));
+        assert_eq!(m.len(), MAX_MESSAGES);
+        assert_eq!(m.last().map(|x| x.id.clone()), Some((MAX_MESSAGES + 49).to_string()));
+        let huge = "a".repeat(MAX_CONTENT + 10);
+        let refs: Vec<Value> = (0..MAX_REFERENCES + 5).map(|i| json!({ "index": i })).collect();
+        let one = messages_from(&json!({ "messages": [{ "role": "assistant", "content": huge, "references": refs }] }));
+        assert_eq!(one[0].content.chars().count(), MAX_CONTENT);
+        assert_eq!(one[0].references.len(), MAX_REFERENCES);
+    }
 
     #[test]
     fn sse_en_trozos_arbitrarios() {
